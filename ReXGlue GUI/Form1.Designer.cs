@@ -17,6 +17,10 @@ namespace ReXGlue_GUI
         private System.Windows.Forms.TabControl tabControl1;
         private System.Windows.Forms.TabPage tabPage1;
         private System.Windows.Forms.TabPage tabPage2;
+        private System.Windows.Forms.Panel panelNewProjectCard;
+        private System.Windows.Forms.Label labelCardTitle;
+        private System.Windows.Forms.Label labelCardDesc;
+        private System.Windows.Forms.Label separatorLine;
         private System.Windows.Forms.Label labelNewRoot;
         private System.Windows.Forms.TextBox textBoxNewProjectRoot;
         private System.Windows.Forms.Button buttonNewBrowse;
@@ -243,12 +247,81 @@ namespace ReXGlue_GUI
             buttonInitProject.UseVisualStyleBackColor = true;
             buttonInitProject.Click += buttonInitProject_Click;
 
-            tabPage2.Controls.Add(labelNewRoot);
-            tabPage2.Controls.Add(textBoxNewProjectRoot);
-            tabPage2.Controls.Add(buttonNewBrowse);
-            tabPage2.Controls.Add(labelAppName);
-            tabPage2.Controls.Add(textBoxAppName);
-            tabPage2.Controls.Add(buttonInitProject);
+            // panelNewProjectCard (centered card)
+            panelNewProjectCard = new Panel();
+            labelCardTitle = new Label();
+            labelCardDesc = new Label();
+            separatorLine = new Label();
+
+            panelNewProjectCard.Size = new Size(420, 260);
+            panelNewProjectCard.Location = new Point((1111 - panelNewProjectCard.Width) / 2, (427 - panelNewProjectCard.Height) / 2);
+            panelNewProjectCard.BackColor = Color.FromArgb(36, 40, 44);
+            panelNewProjectCard.BorderStyle = BorderStyle.FixedSingle;
+
+            // labelCardTitle
+            labelCardTitle.AutoSize = true;
+            labelCardTitle.Location = new Point(20, 16);
+            labelCardTitle.Name = "labelCardTitle";
+            labelCardTitle.Size = new Size(120, 18);
+            labelCardTitle.TabIndex = 0;
+            labelCardTitle.Text = "Initialize New Project";
+            labelCardTitle.ForeColor = Color.FromArgb(93, 156, 255);
+            labelCardTitle.Font = new Font(labelCardTitle.Font, FontStyle.Bold);
+
+            // labelCardDesc
+            labelCardDesc.AutoSize = true;
+            labelCardDesc.Location = new Point(20, 38);
+            labelCardDesc.Name = "labelCardDesc";
+            labelCardDesc.Size = new Size(360, 30);
+            labelCardDesc.TabIndex = 1;
+            labelCardDesc.Text = "Creates a new ReXGlue application project using  rexglue init.";
+            labelCardDesc.ForeColor = Color.FromArgb(160, 167, 174);
+
+            // separatorLine
+            separatorLine.BackColor = Color.FromArgb(54, 57, 61);
+            separatorLine.Location = new Point(14, 74);
+            separatorLine.Size = new Size(panelNewProjectCard.Width - 28, 1);
+
+            // reposition inner controls inside the card
+            labelNewRoot.Location = new Point(20, 86);
+            textBoxNewProjectRoot.Location = new Point(20, 108);
+            textBoxNewProjectRoot.Size = new Size(300, 23);
+            buttonNewBrowse.Location = new Point(330, 106);
+            labelAppName.Location = new Point(20, 146);
+            textBoxAppName.Location = new Point(20, 168);
+            textBoxAppName.Size = new Size(360, 23);
+            buttonInitProject.Location = new Point(20, 202);
+            buttonInitProject.Size = new Size(panelNewProjectCard.Width - 40, 34);
+
+            // adjust styles for dark theme feel
+            textBoxNewProjectRoot.BackColor = Color.FromArgb(28, 30, 33);
+            textBoxNewProjectRoot.ForeColor = Color.WhiteSmoke;
+            textBoxNewProjectRoot.BorderStyle = BorderStyle.FixedSingle;
+
+            textBoxAppName.BackColor = Color.FromArgb(28, 30, 33);
+            textBoxAppName.ForeColor = Color.WhiteSmoke;
+            textBoxAppName.BorderStyle = BorderStyle.FixedSingle;
+
+            buttonNewBrowse.FlatStyle = FlatStyle.Flat;
+            buttonNewBrowse.BackColor = Color.FromArgb(64, 70, 78);
+            buttonNewBrowse.ForeColor = Color.WhiteSmoke;
+
+            buttonInitProject.FlatStyle = FlatStyle.Flat;
+            buttonInitProject.BackColor = Color.FromArgb(60, 66, 76);
+            buttonInitProject.ForeColor = Color.WhiteSmoke;
+
+            // add controls into panel
+            panelNewProjectCard.Controls.Add(labelCardTitle);
+            panelNewProjectCard.Controls.Add(labelCardDesc);
+            panelNewProjectCard.Controls.Add(separatorLine);
+            panelNewProjectCard.Controls.Add(labelNewRoot);
+            panelNewProjectCard.Controls.Add(textBoxNewProjectRoot);
+            panelNewProjectCard.Controls.Add(buttonNewBrowse);
+            panelNewProjectCard.Controls.Add(labelAppName);
+            panelNewProjectCard.Controls.Add(textBoxAppName);
+            panelNewProjectCard.Controls.Add(buttonInitProject);
+
+            tabPage2.Controls.Add(panelNewProjectCard);
             // 
             // tabPage3
             // 
