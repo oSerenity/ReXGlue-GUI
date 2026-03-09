@@ -671,61 +671,43 @@ namespace ReXGlue_GUI
 
         private void buttonAddFunctionAddress_Click(object sender, RoutedEventArgs e)
         {
-            // ── 1. Try to pre-fill from clipboard ─────────────────────────
             string? clipAddr = TryExtractAddressFromClipboard();
-
             string? addr;
             if (clipAddr != null)
             {
-                // Valid address found in clipboard — skip the dialog entirely
                 addr = clipAddr;
             }
             else
             {
-                // Fall back to prompt, pre-filling whatever is in the clipboard
                 string clipRaw = string.Empty;
                 try { if (Clipboard.ContainsText()) clipRaw = Clipboard.GetText().Trim(); } catch { }
                 addr = PromptInput("Add Function Address",
-                    "Enter function address (e.g. 0x827E9A60):",
-                    prefill: clipRaw);
+                    "Enter function address (e.g. 0x827E9A60):", prefill: clipRaw);
             }
 
             if (string.IsNullOrWhiteSpace(addr)) return;
-
             addr = addr.Trim();
             if (!addr.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
                 addr = "0x" + addr.TrimStart('0', 'x', 'X');
 
             var lines = NormalizedLines(GetEditorText());
-            int headerIdx = lines.FindIndex(l => l.Trim() == "[functions]");
-            if (headerIdx < 0)
-            {
-                if (lines.Count > 0 && lines[^1].Length > 0) lines.Add(string.Empty);
-                lines.Add("[functions]");
-                headerIdx = lines.Count - 1;
-            }
-
-            if (lines.Any(l => l.TrimStart().StartsWith(addr, StringComparison.OrdinalIgnoreCase)))
+            var (inserted, _) = InjectAddressesIntoFunctions(lines, new[] { addr });
+            if (inserted == 0)
             { MessageBox.Show($"Address {addr} already exists under [functions].", "Already Present", MessageBoxButton.OK, MessageBoxImage.Information); return; }
-
-            string newLine = $"{addr} = {{}}";
-            lines.Insert(headerIdx + 1, newLine);
             SetEditorText(string.Join("\n", lines));
-            AppendOutput($"[Functions] Added {newLine}");
+            AppendOutput($"[Functions] Added {addr} = {{}}");
         }
 
-        // Returns a validated 0x8xxxxxxx address from the clipboard, or null.
+        private static readonly Regex RxClipAddr =
+            new(@"(0x8[0-9a-fA-F]{7})\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // Returns the first 0x8xxxxxxx address from the clipboard, or null.
         private static string? TryExtractAddressFromClipboard()
         {
             try
             {
                 if (!Clipboard.ContainsText()) return null;
-                string clip = Clipboard.GetText().Trim();
-
-                // Match the first 0x8xxxxxxx (8 hex digits starting with 8) in the text
-                var m = Regex.Match(clip,
-                    @"(0x8[0-9a-fA-F]{7})\b",
-                    RegexOptions.IgnoreCase);
+                var m = RxClipAddr.Match(Clipboard.GetText());
                 return m.Success ? m.Groups[1].Value : null;
             }
             catch { return null; }
@@ -1004,7 +986,7 @@ namespace ReXGlue_GUI
         {
             var para = textBoxTomlEditor.CaretPosition.Paragraph;
             if (para == null) return;
-            var newPara = new Paragraph { Margin = new Thickness(0) };
+            var newPara = new Paragraph { Margin = ZeroMargin };
             newPara.Inlines.Add(new Run(new TextRange(para.ContentStart, para.ContentEnd).Text));
             para.SiblingBlocks.InsertAfter(para, newPara);
             HighlightDocument();
@@ -1064,10 +1046,14 @@ namespace ReXGlue_GUI
             {
                 textBoxTomlEditor.Document.Blocks.Clear();
                 textBoxTomlEditor.Document.PageWidth = 4000;
-                foreach (string line in text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n'))
+                // Split on both CRLF and LF; strip a single trailing empty entry from trailing newline
+                var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+                int count = lines.Length;
+                if (count > 0 && lines[count - 1].Length == 0) count--;
+                for (int i = 0; i < count; i++)
                 {
-                    var para = new Paragraph { Margin = new Thickness(0) };
-                    para.Inlines.Add(new Run(line) { Foreground = ColDefault });
+                    var para = new Paragraph { Margin = ZeroMargin };
+                    para.Inlines.Add(new Run(lines[i]) { Foreground = ColDefault });
                     textBoxTomlEditor.Document.Blocks.Add(para);
                 }
             }
@@ -1078,7 +1064,7 @@ namespace ReXGlue_GUI
 
         // Normalize line endings and split — used throughout
         private static List<string> NormalizedLines(string text) =>
-            text.Replace("\r\n", "\n").Split('\n').ToList();
+            text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).ToList();
 
         // ── SYNTAX HIGHLIGHTING ───────────────────────────────────────────
 
@@ -1282,6 +1268,45 @@ namespace ReXGlue_GUI
             return (start, end);
         }
 
+        // Shared helper: insert addresses into [functions], creating the section if needed.
+        // Returns (inserted, skipped) counts. Does NOT save or switch tabs.
+        private static (int inserted, int skipped) InjectAddressesIntoFunctions(
+            List<string> tomlLines, IEnumerable<string> addresses, string? comment = null)
+        {
+            int headerIdx = tomlLines.FindIndex(l =>
+                l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
+            if (headerIdx < 0)
+            {
+                if (tomlLines.Count > 0 && !string.IsNullOrWhiteSpace(tomlLines[^1]))
+                    tomlLines.Add(string.Empty);
+                tomlLines.Add("[functions]");
+                headerIdx = tomlLines.Count - 1;
+            }
+
+            var (_, funcEnd) = FindFunctionSection(tomlLines);
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = headerIdx + 1; i < funcEnd; i++)
+            {
+                string s = tomlLines[i].Trim();
+                if (!s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) continue;
+                int eq = s.IndexOf('=');
+                existing.Add(eq >= 0 ? s[..eq].Trim() : s);
+            }
+
+            int inserted = 0, insertAt = headerIdx + 1, skipped = 0;
+            foreach (string addr in addresses)
+            {
+                if (existing.Add(addr))
+                {
+                    string entry = comment != null ? $"{addr} = {{}}  {comment}" : $"{addr} = {{}}";
+                    tomlLines.Insert(insertAt++, entry);
+                    inserted++;
+                }
+                else skipped++;
+            }
+            return (inserted, skipped);
+        }
+
         private void buttonRemoveDupes_Click(object sender, RoutedEventArgs e)
         {
             var lines = NormalizedLines(GetEditorText());
@@ -1465,53 +1490,17 @@ namespace ReXGlue_GUI
 
             if (newAddrs.Count == 0) return;
 
-            // Load current TOML lines
             var tomlLines = NormalizedLines(GetEditorText());
+            var (ins, skipped) = InjectAddressesIntoFunctions(tomlLines, newAddrs);
 
-            // Find or create [functions] section
-            int headerIdx = tomlLines.FindIndex(l => l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
-            if (headerIdx < 0)
-            {
-                if (tomlLines.Count > 0 && !string.IsNullOrWhiteSpace(tomlLines[^1]))
-                    tomlLines.Add(string.Empty);
-                tomlLines.Add("[functions]");
-                headerIdx = tomlLines.Count - 1;
-            }
-
-            // Collect addresses already present in [functions] to avoid duplicates
-            var (_, funcEnd) = FindFunctionSection(tomlLines);
-            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = headerIdx + 1; i < funcEnd; i++)
-            {
-                string s = tomlLines[i].Trim();
-                if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                {
-                    int eq = s.IndexOf('=');
-                    existing.Add(eq >= 0 ? s[..eq].Trim() : s);
-                }
-            }
-
-            int inserted = 0;
-            int insertAt = headerIdx + 1;
-            foreach (string addr in newAddrs)
-            {
-                if (existing.Add(addr))
-                {
-                    tomlLines.Insert(insertAt, $"{addr} = {{}}");
-                    insertAt++;
-                    inserted++;
-                }
-            }
-
-            if (inserted == 0)
-            {
-                AppendOutput($"[Code Gen] {newAddrs.Count} unresolved address(es) already present in [functions].", OutWarn);
-                return;
-            }
+            if (ins == 0)
+            { AppendOutput($"[Code Gen] {newAddrs.Count} unresolved address(es) already present in [functions].", OutWarn); return; }
 
             SetEditorText(string.Join("\n", tomlLines));
             buttonSave_Click(this, new RoutedEventArgs());
-            AppendOutput($"[Code Gen] Injected {inserted} unresolved address(es) into [functions].", OutWarn);
+            string msg = $"[Code Gen] Injected {ins} unresolved address(es) into [functions].";
+            if (skipped > 0) msg += $" ({skipped} already present.)";
+            AppendOutput(msg, OutWarn);
         }
 
         // ── TEMPLATE CHIPS ────────────────────────────────────────────────
@@ -1644,64 +1633,35 @@ namespace ReXGlue_GUI
             textBoxAddressResult.Document.Blocks.Clear();
 
             if (parsed.Count == 0)
-            {
-                MessageBox.Show("No addresses found.", "Address Parser", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
+            { MessageBox.Show("No addresses found.", "Address Parser", MessageBoxButton.OK, MessageBoxImage.Information); return; }
 
-            // ── Deduplicate against existing [functions] in TOML ──────────
+            // ── Inject into TOML (shared helper handles dedup + section creation) ──
             var tomlLines = NormalizedLines(GetEditorText());
-            var (funcStart, funcEnd) = FindFunctionSection(tomlLines);
+            var (ins, skipped) = InjectAddressesIntoFunctions(tomlLines, parsed);
 
-            // Collect addresses already present in [functions]
-            var existingAddrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (funcStart >= 0)
+            // Rebuild existing set for the result renderer (after injection)
+            var (funcStart2, funcEnd2) = FindFunctionSection(tomlLines);
+            var existingAfter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = funcStart2 + 1; i < funcEnd2; i++)
             {
-                for (int i = funcStart + 1; i < funcEnd; i++)
-                {
-                    string s = tomlLines[i].Trim();
-                    if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                    {
-                        int eq = s.IndexOf('=');
-                        existingAddrs.Add((eq >= 0 ? s[..eq].Trim() : s).ToLowerInvariant());
-                    }
-                }
+                string s = tomlLines[i].Trim();
+                if (!s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) continue;
+                int eq = s.IndexOf('=');
+                existingAfter.Add(eq >= 0 ? s[..eq].Trim() : s);
             }
 
-            var toInsert = parsed.Where(a => !existingAddrs.Contains(a.ToLowerInvariant())).ToList();
-            int skipped = parsed.Count - toInsert.Count;
-
-            // ── Insert new entries into TOML ──────────────────────────────
-            if (toInsert.Count > 0)
+            if (ins > 0)
             {
-                if (funcStart < 0)
-                {
-                    // No [functions] section — append one
-                    if (tomlLines.Count > 0 && !string.IsNullOrWhiteSpace(tomlLines[^1]))
-                        tomlLines.Add(string.Empty);
-                    tomlLines.Add("[functions]");
-                    funcStart = tomlLines.Count - 1;
-                    funcEnd = tomlLines.Count;
-                }
-
-                // Insert after the [functions] header (before any next section)
-                int insertAt = funcStart + 1;
-                foreach (string addr in toInsert)
-                    tomlLines.Insert(insertAt++, $"{addr} = {{}}");
-
                 SetEditorText(string.Join("\n", tomlLines));
-
-                // Auto-save if a file is loaded
                 if (!string.IsNullOrWhiteSpace(_currentTomlPath) && File.Exists(_currentTomlPath))
                 {
                     buttonSave_Click(this, new RoutedEventArgs());
-                    AppendOutput($"[Address Parser] Inserted {toInsert.Count} address(es) into [functions] and saved.", OutOk);
+                    AppendOutput($"[Address Parser] Inserted {ins} address(es) into [functions] and saved.", OutOk);
                 }
                 else
                 {
-                    AppendOutput($"[Address Parser] Inserted {toInsert.Count} address(es) into [functions] (no file loaded — not saved).", OutWarn);
+                    AppendOutput($"[Address Parser] Inserted {ins} address(es) into [functions] (no file loaded — not saved).", OutWarn);
                 }
-
                 if (skipped > 0)
                     AppendOutput($"[Address Parser] Skipped {skipped} duplicate(s) already in [functions].", OutWarn);
             }
@@ -1710,11 +1670,11 @@ namespace ReXGlue_GUI
                 AppendOutput($"[Address Parser] All {parsed.Count} address(es) already exist in [functions] — nothing added.", OutWarn);
             }
 
-            // ── Render colored results in the output box ──────────────────
+            // ── Render colored results ────────────────────────────────────
             foreach (string addr in parsed)
             {
-                bool isDupe = existingAddrs.Contains(addr.ToLowerInvariant());
-                var para = new Paragraph { Margin = new Thickness(0), FontFamily = new FontFamily("Consolas"), FontSize = 12 };
+                bool isDupe = !existingAfter.Contains(addr) && skipped > 0;
+                var para = new Paragraph { Margin = ZeroMargin, FontFamily = MonoFont, FontSize = 12 };
                 para.Inlines.Add(new Run(addr + " ") { Foreground = isDupe ? OutWarn : OutInfo });
                 para.Inlines.Add(new Run("= ") { Foreground = OutDefault });
                 para.Inlines.Add(new Run("{}") { Foreground = isDupe ? OutWarn : ColBrace });
@@ -1733,6 +1693,19 @@ namespace ReXGlue_GUI
         private static readonly SolidColorBrush OutErr = new(Color.FromRgb(0xF4, 0x47, 0x47)); // red     [ERR]
         private static readonly SolidColorBrush OutDefault = new(Color.FromRgb(0xCC, 0xCC, 0xCC)); // grey    plain
         private static readonly SolidColorBrush OutDim = new(Color.FromRgb(0x77, 0x77, 0x77)); // dimgrey indented
+
+        private static readonly FontFamily MonoFont = new("Consolas");
+        private static readonly Thickness ZeroMargin = new(0);
+
+        // Prefixes that get a [HH:mm:ss] timestamp prepended
+        private static readonly string[] InternalPrefixes =
+        {
+            "[Run Code", "[Initialize", "[Saved]", "[Backup",
+            "[Added]",   "[Functions",  "[Template", "[Remove",
+            "[Clear",    "[Replace",    "[Address",  "[Output",
+            "[Error",    "[SDK",        "[Templates","[setjmp]",
+            "[VS Debugger]", "SDK configured"
+        };
 
         private void buttonOutputCopyAll_Click(object sender, RoutedEventArgs e)
         {
@@ -1770,32 +1743,25 @@ namespace ReXGlue_GUI
             return OutDefault;
         }
 
+        private Paragraph MakeOutputPara(string line, SolidColorBrush? color = null) =>
+            new(new Run(line))
+            {
+                Margin = ZeroMargin,
+                Foreground = color ?? ClassifyLine(line),
+                FontFamily = MonoFont,
+                FontSize = 12
+            };
+
         // Append one or more lines with per-line colouring.
-        // Pass an explicit color to override classification (e.g. OutOk for success, OutErr for failure).
+        // Pass an explicit color to override classification.
         private void AppendOutput(string message, SolidColorBrush? color = null)
         {
             foreach (string raw in message.Replace("\r\n", "\n").Split('\n'))
             {
                 string line = raw;
-                bool isInternal = line.StartsWith("[Run Code") || line.StartsWith("[Initialize")
-                                 || line.StartsWith("[Saved]") || line.StartsWith("[Backup")
-                                 || line.StartsWith("[Added]") || line.StartsWith("[Functions")
-                                 || line.StartsWith("[Template") || line.StartsWith("[Remove")
-                                 || line.StartsWith("[Clear") || line.StartsWith("[Replace")
-                                 || line.StartsWith("[Address") || line.StartsWith("[Output")
-                                 || line.StartsWith("[Error") || line.StartsWith("[SDK")
-                                 || line.StartsWith("[Templates") || line.StartsWith("SDK configured");
-                if (isInternal)
+                if (Array.Exists(InternalPrefixes, p => line.StartsWith(p, StringComparison.Ordinal)))
                     line = $"[{DateTime.Now:HH:mm:ss}] {line}";
-
-                var para = new Paragraph(new Run(line))
-                {
-                    Margin = new Thickness(0),
-                    Foreground = color ?? ClassifyLine(line),
-                    FontFamily = new FontFamily("Consolas"),
-                    FontSize = 12
-                };
-                textBoxOutput.Document.Blocks.Add(para);
+                textBoxOutput.Document.Blocks.Add(MakeOutputPara(line, color));
             }
             textBoxOutput.ScrollToEnd();
         }
@@ -1803,14 +1769,7 @@ namespace ReXGlue_GUI
         // Called from RunRexglue handlers — raw process lines, no timestamp
         private void AppendRawLine(string line)
         {
-            var para = new Paragraph(new Run(line))
-            {
-                Margin = new Thickness(0),
-                Foreground = ClassifyLine(line),
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 12
-            };
-            textBoxOutput.Document.Blocks.Add(para);
+            textBoxOutput.Document.Blocks.Add(MakeOutputPara(line));
             textBoxOutput.ScrollToEnd();
         }
 
@@ -1836,6 +1795,12 @@ namespace ReXGlue_GUI
         private string _lastVsSnapshot = string.Empty;
         private string _vsExpression = "ctx.ctr.u32";
         private const int VsArrayLimit = 64;
+
+        // Cached references to VS-debugger UI controls (set on first use)
+        private TextBlock? _tbVsStatus = null;
+        private Ellipse? _elVsDot = null;
+        private TextBox? _tbVsInterval = null;
+        private System.Windows.Controls.Primitives.ToggleButton? _toggleVsPoll = null;
 
         private static readonly Regex RxVsScalar =
             new(@"^(0x[0-9a-fA-F]+|\d+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -1888,12 +1853,9 @@ namespace ReXGlue_GUI
             _vsCts?.Cancel();
             _vsPollingActive = false;
             SetVsStatus("Polling stopped.", OutWarn, active: false);
-            Dispatcher.Invoke(() =>
-            {
-                if (FindName("toggleVsPoll") is System.Windows.Controls.Primitives.ToggleButton tb
-                    && tb.IsChecked == true)
-                    tb.IsChecked = false;
-            });
+            _toggleVsPoll ??= FindName("toggleVsPoll") as System.Windows.Controls.Primitives.ToggleButton;
+            if (_toggleVsPoll?.IsChecked == true)
+                _toggleVsPoll.IsChecked = false;
         }
 
         // ── Core: connect → evaluate → parse ─────────────────────────────
@@ -2017,10 +1979,10 @@ namespace ReXGlue_GUI
             if (candidates.Count == 0)
             { AppendOutput("[VS Debugger] All counter values are 0x00000000 — nothing to inject.", OutWarn); return; }
 
+            // Build address list with per-entry comments
             var tomlLines = NormalizedLines(GetEditorText());
             int headerIdx = tomlLines.FindIndex(l =>
                 l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
-
             if (headerIdx < 0)
             {
                 if (tomlLines.Count > 0 && !string.IsNullOrWhiteSpace(tomlLines[^1]))
@@ -2029,16 +1991,15 @@ namespace ReXGlue_GUI
                 headerIdx = tomlLines.Count - 1;
             }
 
+            // Inject each candidate with its index comment
             var (_, funcEnd) = FindFunctionSection(tomlLines);
             var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = headerIdx + 1; i < funcEnd; i++)
             {
                 string s = tomlLines[i].Trim();
-                if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                {
-                    int eq = s.IndexOf('=');
-                    existing.Add((eq >= 0 ? s[..eq].Trim() : s).ToLowerInvariant());
-                }
+                if (!s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) continue;
+                int eq = s.IndexOf('=');
+                existing.Add(eq >= 0 ? s[..eq].Trim() : s);
             }
 
             int inserted = 0, insertAt = headerIdx + 1;
@@ -2047,13 +2008,12 @@ namespace ReXGlue_GUI
                 string hex = $"0x{val:X8}";
                 if (existing.Add(hex.ToLowerInvariant()))
                 {
-                    tomlLines.Insert(insertAt, $"{hex} = {{}}  # ctx.ctr.u32[{idx}]");
-                    insertAt++;
+                    tomlLines.Insert(insertAt++, $"{hex} = {{}}");
                     inserted++;
                 }
             }
-
             int skipped = candidates.Count - inserted;
+
             SetEditorText(string.Join("\n", tomlLines));
 
             if (autoSave && !string.IsNullOrWhiteSpace(_currentTomlPath) && File.Exists(_currentTomlPath))
@@ -2079,27 +2039,19 @@ namespace ReXGlue_GUI
 
         private int GetVsPollInterval()
         {
-            try
-            {
-                if (FindName("textBoxVsPollInterval") is TextBox tb &&
-                    int.TryParse(tb.Text, out int v) && v >= 1) return v;
-            }
-            catch { }
-            return 3;
+            _tbVsInterval ??= FindName("textBoxVsPollInterval") as TextBox;
+            return (_tbVsInterval != null && int.TryParse(_tbVsInterval.Text, out int v) && v >= 1) ? v : 3;
         }
 
         private void SetVsStatus(string message, SolidColorBrush color, bool active)
         {
-            try
-            {
-                if (FindName("textBlockVsStatus") is TextBlock tb)
-                { tb.Text = message; tb.Foreground = color; }
-                if (FindName("ellipseVsDot") is Ellipse dot)
-                    dot.Fill = (active || color == OutOk)
-                        ? new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0x4E))
-                        : new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
-            }
-            catch { }
+            _tbVsStatus ??= FindName("textBlockVsStatus") as TextBlock;
+            _elVsDot ??= FindName("ellipseVsDot") as Ellipse;
+            if (_tbVsStatus != null) { _tbVsStatus.Text = message; _tbVsStatus.Foreground = color; }
+            if (_elVsDot != null)
+                _elVsDot.Fill = (active || color == OutOk)
+                    ? new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0x4E))
+                    : new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
         }
     }
 }
