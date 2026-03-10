@@ -758,10 +758,21 @@ namespace ReXGlue_GUI
         private void SetDirty(bool dirty)
         {
             _isDirty = dirty;
-            if (string.IsNullOrWhiteSpace(_currentTomlPath)) return;
+            UpdateStatusLeft();
+        }
+
+        private void UpdateStatusLeft()
+        {
+            if (string.IsNullOrWhiteSpace(_currentTomlPath))
+            {
+                textStatusLeft.Text = "";
+                return;
+            }
             string name = Path.GetFileName(_currentTomlPath);
-            textStatusLeft.Text      = dirty ? $"{_currentTomlPath}  [unsaved]" : name;
-            textStatusLeft.Foreground = dirty ? StatusUnsaved : StatusSaved;
+            string baseText = _isDirty ? $"{_currentTomlPath}  [unsaved]" : name;
+            int funcCount = CountFunctionsInSection(NormalizedLines(GetEditorText()));
+            textStatusLeft.Text      = $"{baseText}  |  {funcCount} function(s)";
+            textStatusLeft.Foreground = _isDirty ? StatusUnsaved : StatusSaved;
         }
 
         // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────
@@ -1058,6 +1069,7 @@ namespace ReXGlue_GUI
             finally { _suppressEditorUpdate = false; }
             HighlightDocument();
             UpdateLineNumbers();
+            UpdateStatusLeft();
         }
 
         // Normalize line endings and split — used throughout
@@ -1155,6 +1167,7 @@ namespace ReXGlue_GUI
             {
                 _highlightPending = false;
                 HighlightDocument();
+                UpdateStatusLeft();
             });
         }
 
@@ -1216,12 +1229,11 @@ namespace ReXGlue_GUI
             if (!File.Exists(path)) return;
             _currentTomlPath    = path;
             textBreadcrumb.Text = path;
-            textStatusLeft.Text = Path.GetFileName(path);
-            textStatusLeft.Foreground = StatusSaved;
             _isDirty = false;
             SaveLastTomlPath(path);
             try   { SetEditorText(File.ReadAllText(path)); }
             catch (Exception ex) { AppendOutput($"[Error loading TOML] {ex.Message}"); }
+            UpdateStatusLeft();
         }
 
         private void buttonReload_Click(object sender, RoutedEventArgs e)
@@ -1249,6 +1261,20 @@ namespace ReXGlue_GUI
             { MessageBox.Show("setjmp/longjmp entries are already present.", "Already Added", MessageBoxButton.OK, MessageBoxImage.Information); return; }
             SetEditorText(text.TrimEnd('\n', '\r') + "\nsetjmp_address = 0x00000000\nlongjmp_address = 0x00000000\n");
             AppendOutput("[Added] setjmp_address and longjmp_address entries.");
+        }
+
+        // Count entries (0x... = {...}) in the [functions] section.
+        private static int CountFunctionsInSection(List<string> lines)
+        {
+            var (start, end) = FindFunctionSection(lines);
+            if (start < 0) return 0;
+            int count = 0;
+            for (int i = start + 1; i < end; i++)
+            {
+                string s = lines[i].Trim();
+                if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) count++;
+            }
+            return count;
         }
 
         // Shared helper: find the [functions] section bounds in a line list.
@@ -1426,6 +1452,9 @@ namespace ReXGlue_GUI
 
         private async void buttonRunCodeGen_Click(object sender, RoutedEventArgs e)
         {
+            bool triggerVsBuildAndStart = _runCodeGenTriggeredByVsFetch;
+            _runCodeGenTriggeredByVsFetch = false;
+
             if (!string.IsNullOrWhiteSpace(_currentTomlPath) && File.Exists(_currentTomlPath))
                 buttonSave_Click(sender, e);
 
@@ -1457,6 +1486,8 @@ namespace ReXGlue_GUI
 
                 if (!ok)
                     TryInjectUnresolvedCalls(outputLines);
+                else if (triggerVsBuildAndStart)
+                    _ = Task.Run(() => TriggerVsBuildAndStartDebug());
             }
             catch (Exception ex)
             {
@@ -1787,17 +1818,17 @@ namespace ReXGlue_GUI
         private static extern int CreateBindCtx(uint reserved, out IntPtr ppbc);
 
         // ── State ─────────────────────────────────────────────────────────
-        private DispatcherTimer?                          _vsWatchTimer   = null;
-        private System.Threading.CancellationTokenSource? _vsCts          = null;
-        private bool   _vsPollingActive = false;
-        private string _lastVsSnapshot  = string.Empty;
-        private string _vsExpression    = "ctx.ctr.u32";
-        private const  int VsArrayLimit = 64;
+        private DTE2? _vsDte = null;
+        private _dispDebuggerEvents_OnEnterBreakModeEventHandler? _vsBreakHandler = null;
+        private bool    _vsPollingActive  = false; // true when Auto is on (event-based, no timer)
+        private string  _lastVsSnapshot   = string.Empty;
+        private string  _vsExpression     = "ctx.ctr.u32";
+        private bool    _runCodeGenTriggeredByVsFetch = false;
+        private const   int VsArrayLimit = 64;
 
         // Cached references to VS-debugger UI controls (set on first use)
         private TextBlock?  _tbVsStatus   = null;
         private Ellipse?    _elVsDot      = null;
-        private TextBox?    _tbVsInterval = null;
         private System.Windows.Controls.Primitives.ToggleButton? _toggleVsPoll = null;
 
         private static readonly Regex RxVsScalar =
@@ -1825,36 +1856,61 @@ namespace ReXGlue_GUI
         public void VsDebugger_StartPolling(object sender, RoutedEventArgs e)
         {
             if (_vsPollingActive) return;
-            _vsPollingActive = true;
-            _vsCts           = new System.Threading.CancellationTokenSource();
-            int interval     = GetVsPollInterval();
-
-            _vsWatchTimer       = new DispatcherTimer { Interval = TimeSpan.FromSeconds(interval) };
-            _vsWatchTimer.Tick += async (_, _) =>
+            DTE2? dte = GetAnyVsDte();
+            if (dte == null)
             {
-                if (_vsCts?.IsCancellationRequested == true) { StopVsPollingInternal(); return; }
-                try
-                {
-                    var entries = await Task.Run(EvaluateCtxCtrInVs);
-                    if (entries != null) ProcessCtrEntries(entries, autoSave: true);
-                }
-                catch { /* swallow poll tick errors */ }
-            };
-            _vsWatchTimer.Start();
-            SetVsStatus($"Polling every {interval}s…", OutInfo, active: true);
-            AppendOutput($"[VS Debugger] Auto-polling started ({interval}s interval).", OutInfo);
+                SetVsStatus("No Visual Studio instance found.", OutWarn, active: false);
+                AppendOutput("[VS Debugger] Auto requires a running Visual Studio.", OutWarn);
+                _toggleVsPoll ??= FindName("toggleVsPoll") as System.Windows.Controls.Primitives.ToggleButton;
+                if (_toggleVsPoll?.IsChecked == true) _toggleVsPoll.IsChecked = false;
+                return;
+            }
+            _vsDte = dte;
+            _vsPollingActive = true;
+            _vsBreakHandler = OnVsEnterBreakMode;
+            dte.Events.DebuggerEvents.OnEnterBreakMode += _vsBreakHandler;
+            SetVsStatus("Auto-detect: waiting for breakpoint…", OutInfo, active: true);
+            AppendOutput("[VS Debugger] Auto-detect started. Will fetch ctx when breakpoint is hit.", OutInfo);
         }
 
         public void VsDebugger_StopPolling(object sender, RoutedEventArgs e)
             => StopVsPollingInternal();
 
+        private void OnVsEnterBreakMode(dbgEventReason Reason, ref dbgExecutionAction ExecutionAction)
+        {
+            if (_vsDte == null || !_vsPollingActive) return;
+            try
+            {
+                var entries = EvaluateCtxCtrWithDte(_vsDte);
+                if (entries != null && entries.Count > 0)
+                {
+                    Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+                    {
+                        if (!_vsPollingActive) return;
+                        AppendOutput("[VS Debugger] Breakpoint hit — fetching ctx.", OutInfo);
+                        ProcessCtrEntries(entries, autoSave: true);
+                    });
+                }
+            }
+            catch { /* swallow — will retry on next break */ }
+        }
+
         private void StopVsPollingInternal()
         {
-            _vsWatchTimer?.Stop();
-            _vsWatchTimer    = null;
-            _vsCts?.Cancel();
+            if (_vsDte != null)
+            {
+                try
+                {
+                    if (_vsBreakHandler != null)
+                        _vsDte.Events.DebuggerEvents.OnEnterBreakMode -= _vsBreakHandler;
+                }
+                catch { }
+                Marshal.ReleaseComObject(_vsDte);
+                _vsDte = null;
+            }
+            _vsBreakHandler = null;
             _vsPollingActive = false;
-            SetVsStatus("Polling stopped.", OutWarn, active: false);
+            SetVsStatus("Auto-detect stopped.", OutWarn, active: false);
             _toggleVsPoll ??= FindName("toggleVsPoll") as System.Windows.Controls.Primitives.ToggleButton;
             if (_toggleVsPoll?.IsChecked == true)
                 _toggleVsPoll.IsChecked = false;
@@ -1928,6 +1984,26 @@ namespace ReXGlue_GUI
                 return result;
             }
             finally { Marshal.ReleaseComObject(dte); }
+        }
+
+        // Evaluate ctx when we already have DTE (e.g. from OnEnterBreakMode). Does NOT release dte.
+        private List<(int Index, uint Value)>? EvaluateCtxCtrWithDte(DTE2 dte)
+        {
+            if (dte.Debugger?.CurrentMode != dbgDebugMode.dbgBreakMode) return null;
+            try
+            {
+                var dbg    = (Debugger2)dte.Debugger;
+                string expr = _vsExpression.Trim();
+                var exprObj = dbg.GetExpression(expr, UseAutoExpandRules: true, Timeout: 2000);
+                if (!exprObj.IsValidValue) return null;
+                var result = ParseVsValue(exprObj.Value ?? string.Empty, dbg, expr);
+                Dispatcher.Invoke(() => SetVsStatus(
+                    $"Got {result.Count} value(s) from VS.", OutOk, active: _vsPollingActive));
+                try { dbg.TerminateAll(); }
+                catch { }
+                return result;
+            }
+            catch { return null; }
         }
 
         private List<(int Index, uint Value)> ParseVsValue(
@@ -2033,6 +2109,74 @@ namespace ReXGlue_GUI
             tabBtnCodeGen.IsChecked = true;
             tabBtnCodeGen.RaiseEvent(new RoutedEventArgs(
                 System.Windows.Controls.Primitives.ToggleButton.CheckedEvent));
+
+            // Only trigger VS build+start after code gen when in Auto (polling) mode
+            _runCodeGenTriggeredByVsFetch = _vsPollingActive;
+            // After fetching and injecting, run code generation automatically
+            Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+                buttonRunCodeGen_Click(this, new RoutedEventArgs()));
+        }
+
+        // Get any running Visual Studio DTE from ROT (for build/start after code gen).
+        private static DTE2? GetAnyVsDte()
+        {
+            if (GetRunningObjectTable(0, out IntPtr rotPtr) != 0 || rotPtr == IntPtr.Zero) return null;
+            if (CreateBindCtx(0, out IntPtr bcPtr) != 0 || bcPtr == IntPtr.Zero) return null;
+            var rot = (IRunningObjectTable)Marshal.GetObjectForIUnknown(rotPtr);
+            var bc  = (IBindCtx)Marshal.GetObjectForIUnknown(bcPtr);
+            Marshal.Release(rotPtr);
+            Marshal.Release(bcPtr);
+            rot.EnumRunning(out IEnumMoniker enumMoniker);
+            var monikers = new IMoniker[1];
+            DTE2? dte = null;
+            while (enumMoniker.Next(1, monikers, IntPtr.Zero) == 0)
+            {
+                try
+                {
+                    monikers[0].GetDisplayName(bc, null, out string name);
+                    if (!name.StartsWith("!VisualStudio.DTE", StringComparison.OrdinalIgnoreCase)) continue;
+                    rot.GetObject(monikers[0], out object obj);
+                    if (obj is DTE2 d)
+                    {
+                        dte = d;
+                        break;
+                    }
+                    if (obj != null) Marshal.ReleaseComObject(obj);
+                }
+                catch { /* stale ROT entry */ }
+            }
+            return dte;
+        }
+
+        private void TriggerVsBuildAndStartDebug()
+        {
+            void say(string msg, SolidColorBrush color) =>
+                Dispatcher.Invoke(() => AppendOutput(msg, color));
+
+            DTE2? dte = null;
+            try
+            {
+                dte = GetAnyVsDte();
+                if (dte == null)
+                {
+                    say("[VS] No Visual Studio instance found — skipping build and start.", OutWarn);
+                    return;
+                }
+                say("[VS] Building solution…", OutInfo);
+                dte.ExecuteCommand("Build.BuildSolution");
+                System.Threading.Thread.Sleep(500);
+                say("[VS] Starting debugger…", OutInfo);
+                dte.ExecuteCommand("Debug.Start");
+                say("[VS] Build and Debug.Start requested.", OutOk);
+            }
+            catch (Exception ex)
+            {
+                say($"[VS] Build/start failed: {ex.Message}", OutErr);
+            }
+            finally
+            {
+                if (dte != null) Marshal.ReleaseComObject(dte);
+            }
         }
 
         // ── Helpers ───────────────────────────────────────────────────────
@@ -2042,12 +2186,6 @@ namespace ReXGlue_GUI
                 return uint.TryParse(s[2..], System.Globalization.NumberStyles.HexNumber,
                                      null, out value);
             return uint.TryParse(s, out value);
-        }
-
-        private int GetVsPollInterval()
-        {
-            _tbVsInterval ??= FindName("textBoxVsPollInterval") as TextBox;
-            return (_tbVsInterval != null && int.TryParse(_tbVsInterval.Text, out int v) && v >= 1) ? v : 3;
         }
 
         private void SetVsStatus(string message, SolidColorBrush color, bool active)

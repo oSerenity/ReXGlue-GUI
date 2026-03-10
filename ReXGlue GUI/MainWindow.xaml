@@ -549,13 +549,6 @@
 
                         <!-- Action buttons -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="poll (s):" Foreground="#4A5568"
-                                       FontFamily="Segoe UI" FontSize="11"
-                                       VerticalAlignment="Center" Margin="0,0,4,0"/>
-                            <TextBox x:Name="textBoxVsPollInterval"
-                                     Text="3" Width="30"
-                                     Style="{StaticResource DarkTextBox}"
-                                     Height="22" FontSize="11"/>
                             <Button Content="⬇ Fetch"
                                     Style="{StaticResource ToolbarBtn}"
                                     Height="22" FontSize="11" Padding="8,0"
@@ -565,10 +558,11 @@
                             <ToggleButton x:Name="toggleVsPoll"
                                           Content="▶ Auto"
                                           Height="22" FontSize="11" Padding="8,0"
+                                          Margin="4,0,0,0"
                                           FontFamily="Segoe UI" Cursor="Hand"
                                           Checked="VsDebugger_StartPolling"
                                           Unchecked="VsDebugger_StopPolling"
-                                          ToolTip="Poll VS every N seconds automatically">
+                                          ToolTip="Auto-detect breakpoints: fetch ctx when VS hits a breakpoint">
                                 <ToggleButton.Style>
                                     <Style TargetType="ToggleButton">
                                         <Setter Property="Background"   Value="#2A2A2A"/>
