@@ -26,7 +26,7 @@ namespace ReXGlue_GUI
     public partial class MainWindow : Window
     {
         // ── Constants ─────────────────────────────────────────────────────
-        private const string REXSDK_ENV = "REXSDK";
+        private const string REXSDK_ENV  = "REXSDK";
         private const string BASESDK_ENV = "BaseSDKPath";
         private const EnvironmentVariableTarget EnvTarget = EnvironmentVariableTarget.User;
 
@@ -49,7 +49,7 @@ namespace ReXGlue_GUI
             Title = "ReXGlue GUI (DEBUG)";
 #endif
             textBoxTomlEditor.Document.PageWidth = 4000;
-            textBoxTomlEditor.SelectionChanged += textBoxTomlEditor_SelectionChanged;
+            textBoxTomlEditor.SelectionChanged  += textBoxTomlEditor_SelectionChanged;
 
             BuildStarterChips();
             CheckAndConfigureSdk();
@@ -112,51 +112,49 @@ namespace ReXGlue_GUI
         {
             var tb = new TextBox
             {
-                Background = new SolidColorBrush(Color.FromRgb(0x14, 0x14, 0x14)),
-                Foreground = Brushes.LightGray,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
-                Height = 28,
-                Padding = new Thickness(6, 0, 6, 0),
+                Background             = new SolidColorBrush(Color.FromRgb(0x14, 0x14, 0x14)),
+                Foreground             = Brushes.LightGray,
+                BorderBrush            = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
+                FontFamily             = new FontFamily("Consolas"),
+                FontSize               = 12,
+                Height                 = 28,
+                Padding                = new Thickness(6, 0, 6, 0),
                 VerticalContentAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 0, 16),
-                Text = prefill
+                Margin                 = new Thickness(0, 0, 0, 16),
+                Text                   = prefill
             };
             var btnOk = new Button
             {
-                Content = "OK",
-                Width = 80,
-                Height = 28,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Background = new SolidColorBrush(Color.FromRgb(0x2E, 0x2E, 0x2E)),
-                Foreground = Brushes.LightGray,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44))
+                Content              = "OK",
+                Width                = 80,
+                Height               = 28,
+                HorizontalAlignment  = HorizontalAlignment.Right,
+                Background           = new SolidColorBrush(Color.FromRgb(0x2E, 0x2E, 0x2E)),
+                Foreground           = Brushes.LightGray,
+                BorderBrush          = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44))
             };
             var stack = new StackPanel { Margin = new Thickness(20) };
             stack.Children.Add(new TextBlock
             {
-                Text = prompt,
-                Foreground = Brushes.LightGray,
-                FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 12,
+                Text         = prompt,
+                Foreground   = Brushes.LightGray,
+                FontFamily   = new FontFamily("Segoe UI"),
+                FontSize     = 12,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 10)
+                Margin       = new Thickness(0, 0, 0, 10)
             });
             stack.Children.Add(tb);
             stack.Children.Add(btnOk);
 
             var win = new Window
             {
-                Title = title,
-                MinWidth = 380,
-                Width = 420,
-                MinHeight = 200,
-                Height = 220,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x24)),
-                ResizeMode = ResizeMode.CanResize,
-                Content = stack
+                Title                  = title,
+                MinWidth               = 380, Width  = 420,
+                MinHeight              = 200, Height = 220,
+                WindowStartupLocation  = WindowStartupLocation.CenterOwner,
+                Background             = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x24)),
+                ResizeMode             = ResizeMode.CanResize,
+                Content                = stack
             };
             btnOk.Click += (_, _) => win.DialogResult = true;
 
@@ -207,8 +205,8 @@ namespace ReXGlue_GUI
         {
             try
             {
-                string norm = NormalizePath(releasePath);
-                var entries = GetEnv("Path")
+                string norm    = NormalizePath(releasePath);
+                var entries    = GetEnv("Path")
                                     .Split(';', StringSplitOptions.RemoveEmptyEntries)
                                     .Select(p => p.Trim())
                                     .Where(p => !string.IsNullOrWhiteSpace(p))
@@ -238,18 +236,18 @@ namespace ReXGlue_GUI
         {
             if (panelNewProject == null || sender is not RadioButton rb) return;
             panelNewProject.Visibility = Visibility.Collapsed;
-            panelCodeGen.Visibility = Visibility.Collapsed;
+            panelCodeGen.Visibility    = Visibility.Collapsed;
             panelAddrParser.Visibility = Visibility.Collapsed;
-            panelOutput.Visibility = Visibility.Collapsed;
+            panelOutput.Visibility     = Visibility.Collapsed;
             switch (rb.Tag?.ToString())
             {
                 case "NewProject": panelNewProject.Visibility = Visibility.Visible; break;
-                case "CodeGen": panelCodeGen.Visibility = Visibility.Visible; break;
+                case "CodeGen":    panelCodeGen.Visibility    = Visibility.Visible; break;
                 case "AddrParser":
                     panelAddrParser.Visibility = Visibility.Visible;
                     CheckClipboardForSetjmp();
                     break;
-                case "Output": panelOutput.Visibility = Visibility.Visible; break;
+                case "Output":     panelOutput.Visibility     = Visibility.Visible; break;
             }
         }
 
@@ -292,7 +290,7 @@ namespace ReXGlue_GUI
                     if (!m.Success) continue;
                     string key = m.Groups[1].Value.ToLowerInvariant();
                     string val = m.Groups[2].Value;
-                    if (key == "setjmp_address") setjmp = val;
+                    if (key == "setjmp_address")  setjmp  = val;
                     if (key == "longjmp_address") longjmp = val;
                 }
 
@@ -304,7 +302,7 @@ namespace ReXGlue_GUI
                 }
 
                 string msg = "IDC setjmp data found:\n";
-                if (setjmp != null) msg += $"  setjmp_address  = {setjmp}\n";
+                if (setjmp  != null) msg += $"  setjmp_address  = {setjmp}\n";
                 if (longjmp != null) msg += $"  longjmp_address = {longjmp}\n";
                 msg += "\nApply to loaded TOML?";
 
@@ -319,14 +317,14 @@ namespace ReXGlue_GUI
 
         private void ApplySetjmpToToml(string? setjmp, string? longjmp)
         {
-            var lines = NormalizedLines(GetEditorText());
+            var lines   = NormalizedLines(GetEditorText());
             int applied = 0;
 
             for (int i = 0; i < lines.Count; i++)
             {
                 string t = lines[i].Trim();
                 if (setjmp != null && t.StartsWith("setjmp_address", StringComparison.OrdinalIgnoreCase))
-                { lines[i] = $"setjmp_address = {setjmp}"; applied++; setjmp = null; }
+                { lines[i] = $"setjmp_address = {setjmp}";   applied++; setjmp  = null; }
                 else if (longjmp != null && t.StartsWith("longjmp_address", StringComparison.OrdinalIgnoreCase))
                 { lines[i] = $"longjmp_address = {longjmp}"; applied++; longjmp = null; }
             }
@@ -334,9 +332,9 @@ namespace ReXGlue_GUI
             // Append any not found — insert before [functions] or at end
             if (setjmp != null || longjmp != null)
             {
-                int funcIdx = lines.FindIndex(l => l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
+                int funcIdx  = lines.FindIndex(l => l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
                 int insertAt = funcIdx >= 0 ? funcIdx : lines.Count;
-                if (setjmp != null) { lines.Insert(insertAt, $"setjmp_address = {setjmp}"); insertAt++; applied++; }
+                if (setjmp  != null) { lines.Insert(insertAt, $"setjmp_address = {setjmp}");   insertAt++; applied++; }
                 if (longjmp != null) { lines.Insert(insertAt, $"longjmp_address = {longjmp}"); applied++; }
             }
 
@@ -386,9 +384,9 @@ namespace ReXGlue_GUI
         private void CheckAndConfigureSdk()
         {
             RefreshStatusIndicators();
-            string rexsdk = GetEnv(REXSDK_ENV);
+            string rexsdk  = GetEnv(REXSDK_ENV);
             string baseSdk = GetEnv(BASESDK_ENV);
-            bool rexOk = !string.IsNullOrWhiteSpace(rexsdk) && Directory.Exists(rexsdk);
+            bool rexOk  = !string.IsNullOrWhiteSpace(rexsdk)  && Directory.Exists(rexsdk);
             bool baseOk = !string.IsNullOrWhiteSpace(baseSdk) && Directory.Exists(baseSdk);
             if (rexOk && baseOk) { panelSdkSetup.Visibility = Visibility.Collapsed; return; }
             if (!string.IsNullOrWhiteSpace(rexsdk))
@@ -404,23 +402,23 @@ namespace ReXGlue_GUI
 
         private void RefreshStatusIndicators()
         {
-            string rexsdk = GetEnv(REXSDK_ENV);
-            string baseSdk = GetEnv(BASESDK_ENV);
+            string rexsdk   = GetEnv(REXSDK_ENV);
+            string baseSdk  = GetEnv(BASESDK_ENV);
             string userPath = GetEnv("Path");
-            SetStatus(statusRexsdk, rexsdk, Directory.Exists(rexsdk));
+            SetStatus(statusRexsdk,  rexsdk,  Directory.Exists(rexsdk));
             SetStatus(statusBaseSdk, baseSdk, Directory.Exists(baseSdk));
             bool pathOk = userPath.Split(';', StringSplitOptions.RemoveEmptyEntries)
                 .Any(p => p.Contains("rexglue-sdk", StringComparison.OrdinalIgnoreCase)
-                       && p.Contains("Release", StringComparison.OrdinalIgnoreCase));
-            statusPathEntry.Text = pathOk ? "● Set" : "● Not set";
+                       && p.Contains("Release",     StringComparison.OrdinalIgnoreCase));
+            statusPathEntry.Text  = pathOk ? "● Set" : "● Not set";
             statusPathEntry.Style = (Style)FindResource(pathOk ? "StatusOk" : "StatusWarn");
         }
 
         private void SetStatus(TextBlock tb, string value, bool exists)
         {
-            (tb.Text, tb.Style) = string.IsNullOrWhiteSpace(value) ? ("● Not set", (Style)FindResource("StatusWarn"))
-                                : !exists ? ("● Invalid path", (Style)FindResource("StatusWarn"))
-                                : ($"● {value}", (Style)FindResource("StatusOk"));
+            (tb.Text, tb.Style) = string.IsNullOrWhiteSpace(value) ? ("● Not set",      (Style)FindResource("StatusWarn"))
+                                : !exists                          ? ("● Invalid path", (Style)FindResource("StatusWarn"))
+                                :                                    ($"● {value}",     (Style)FindResource("StatusOk"));
         }
 
         private void textBoxSetupBaseFolder_TextChanged(object sender, TextChangedEventArgs e)
@@ -458,13 +456,13 @@ namespace ReXGlue_GUI
                     Directory.CreateDirectory(baseFolder);
                     var proc = Process.Start(new ProcessStartInfo
                     {
-                        FileName = "git",
-                        Arguments = "clone https://github.com/rexglue/rexglue-sdk",
-                        WorkingDirectory = baseFolder,
-                        UseShellExecute = false,
+                        FileName               = "git",
+                        Arguments              = "clone https://github.com/rexglue/rexglue-sdk",
+                        WorkingDirectory       = baseFolder,
+                        UseShellExecute        = false,
                         RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
+                        RedirectStandardError  = true,
+                        CreateNoWindow         = true
                     });
 
                     if (proc == null)
@@ -505,8 +503,8 @@ namespace ReXGlue_GUI
             string releasePath = Path.Combine(sdkRoot, "out", "win-amd64", "Release");
 
             if (!Directory.Exists(rexsdkValue))
-                if (!TrySetEnvWithConfirmation(REXSDK_ENV, rexsdkValue)) return;
-            if (!TrySetEnvWithConfirmation(BASESDK_ENV, baseFolder)) return;
+            if (!TrySetEnvWithConfirmation(REXSDK_ENV,  rexsdkValue)) return;
+            if (!TrySetEnvWithConfirmation(BASESDK_ENV, baseFolder))  return;
             if (!TryAddReleaseToUserPath(releasePath))
             { MessageBox.Show("Failed to update user Path.", "Error", MessageBoxButton.OK, MessageBoxImage.Error); return; }
 
@@ -528,7 +526,7 @@ namespace ReXGlue_GUI
         {
             try
             {
-                string baseSdk = GetEnv(BASESDK_ENV);
+                string baseSdk  = GetEnv(BASESDK_ENV);
                 string? derived = !string.IsNullOrWhiteSpace(baseSdk) && Directory.Exists(baseSdk)
                     ? baseSdk
                     : DeriveBaseFromRexsdk(GetEnv(REXSDK_ENV));
@@ -549,7 +547,7 @@ namespace ReXGlue_GUI
             placeholderAppName.Visibility = string.IsNullOrEmpty(textBoxAppName.Text)
                 ? Visibility.Visible : Visibility.Collapsed;
             string root = NormalizePath(textBoxNewProjectRoot.Text);
-            string app = textBoxAppName.Text?.Trim() ?? string.Empty;
+            string app  = textBoxAppName.Text?.Trim() ?? string.Empty;
             textFullPath.Text = (!string.IsNullOrWhiteSpace(root) && !string.IsNullOrWhiteSpace(app))
                 ? $"Full path: {Path.Combine(root, app)}"
                 : "Full path: (fill in root and name above)";
@@ -558,15 +556,15 @@ namespace ReXGlue_GUI
         private async void buttonInitProject_Click(object sender, RoutedEventArgs e)
         {
             string root = NormalizePath(textBoxNewProjectRoot.Text);
-            string app = textBoxAppName.Text?.Trim() ?? string.Empty;
+            string app  = textBoxAppName.Text?.Trim() ?? string.Empty;
             if (!Require(root, "Please select a valid Root Folder.", "Missing Root") || !Directory.Exists(root))
             { MessageBox.Show("Please select a valid Root Folder.", "Missing Root", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
             if (!Require(app, "Please enter an Application Name.", "Missing Name")) return;
 
             string fullPath = Path.Combine(root, app);
-            textBoxCodeGenDir.Text = fullPath;
+            textBoxCodeGenDir.Text     = fullPath;
             var initBtn = (Button)sender;
-            initBtn.IsEnabled = false;
+            initBtn.IsEnabled      = false;
             tabBtnOutput.IsChecked = true;
 
             try
@@ -604,13 +602,13 @@ namespace ReXGlue_GUI
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "rexglue",
-                    Arguments = args,
-                    WorkingDirectory = workDir,
-                    UseShellExecute = false,
+                    FileName               = "rexglue",
+                    Arguments              = args,
+                    WorkingDirectory       = workDir,
+                    UseShellExecute        = false,
                     RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
+                    RedirectStandardError  = true,
+                    CreateNoWindow         = true
                 },
                 EnableRaisingEvents = true
             };
@@ -645,14 +643,14 @@ namespace ReXGlue_GUI
             if (text.Contains("[functions]"))
             { MessageBox.Show("[functions] section already exists.", "Already Present", MessageBoxButton.OK, MessageBoxImage.Information); return; }
 
-            var lines = NormalizedLines(text);
+            var lines       = NormalizedLines(text);
             int insertIndex = lines.Count;
 
             var caretPara = textBoxTomlEditor.CaretPosition.Paragraph;
             if (caretPara != null)
             {
                 var paras = textBoxTomlEditor.Document.Blocks.OfType<Paragraph>().ToList();
-                int idx = paras.IndexOf(caretPara);
+                int idx   = paras.IndexOf(caretPara);
                 if (idx >= 0 && idx < lines.Count) insertIndex = idx;
             }
 
@@ -727,34 +725,34 @@ namespace ReXGlue_GUI
 
         // ── EDITOR STATE ──────────────────────────────────────────────────
 
-        private string _currentTomlPath = string.Empty;
-        private bool _suppressEditorUpdate = false;
-        private bool _highlightPending = false;
-        private bool _isDirty = false;
-        private List<TextRange> _findMatches = new();
-        private int _findIndex = -1;
+        private string          _currentTomlPath      = string.Empty;
+        private bool            _suppressEditorUpdate = false;
+        private bool            _highlightPending     = false;
+        private bool            _isDirty              = false;
+        private List<TextRange> _findMatches          = new();
+        private int             _findIndex            = -1;
 
         // VS Code Dark+ token colours
-        private static readonly SolidColorBrush ColDefault = new(Color.FromRgb(0xD4, 0xD4, 0xD4));
-        private static readonly SolidColorBrush ColComment = new(Color.FromRgb(0x6A, 0x99, 0x55));
-        private static readonly SolidColorBrush ColSection = new(Color.FromRgb(0x56, 0x9C, 0xD6));
-        private static readonly SolidColorBrush ColKey = new(Color.FromRgb(0x9C, 0xDC, 0xFE));
-        private static readonly SolidColorBrush ColEquals = new(Color.FromRgb(0xD4, 0xD4, 0xD4));
-        private static readonly SolidColorBrush ColHex = new(Color.FromRgb(0xB5, 0xCE, 0xA8));
-        private static readonly SolidColorBrush ColString = new(Color.FromRgb(0xCE, 0x91, 0x78));
-        private static readonly SolidColorBrush ColBool = new(Color.FromRgb(0x56, 0x9C, 0xD6));
-        private static readonly SolidColorBrush ColNumber = new(Color.FromRgb(0xB5, 0xCE, 0xA8));
-        private static readonly SolidColorBrush ColBrace = new(Color.FromRgb(0xFF, 0xD7, 0x00));
-        private static readonly SolidColorBrush ColIdent = new(Color.FromRgb(0x9C, 0xDC, 0xFE));
+        private static readonly SolidColorBrush ColDefault  = new(Color.FromRgb(0xD4, 0xD4, 0xD4));
+        private static readonly SolidColorBrush ColComment  = new(Color.FromRgb(0x6A, 0x99, 0x55));
+        private static readonly SolidColorBrush ColSection  = new(Color.FromRgb(0x56, 0x9C, 0xD6));
+        private static readonly SolidColorBrush ColKey      = new(Color.FromRgb(0x9C, 0xDC, 0xFE));
+        private static readonly SolidColorBrush ColEquals   = new(Color.FromRgb(0xD4, 0xD4, 0xD4));
+        private static readonly SolidColorBrush ColHex      = new(Color.FromRgb(0xB5, 0xCE, 0xA8));
+        private static readonly SolidColorBrush ColString   = new(Color.FromRgb(0xCE, 0x91, 0x78));
+        private static readonly SolidColorBrush ColBool     = new(Color.FromRgb(0x56, 0x9C, 0xD6));
+        private static readonly SolidColorBrush ColNumber   = new(Color.FromRgb(0xB5, 0xCE, 0xA8));
+        private static readonly SolidColorBrush ColBrace    = new(Color.FromRgb(0xFF, 0xD7, 0x00));
+        private static readonly SolidColorBrush ColIdent    = new(Color.FromRgb(0x9C, 0xDC, 0xFE));
         private static readonly SolidColorBrush ColFindMark = new(Color.FromRgb(0x51, 0x3A, 0x00));
-        private static readonly SolidColorBrush ColFindCur = new(Color.FromRgb(0xA8, 0x68, 0x00));
+        private static readonly SolidColorBrush ColFindCur  = new(Color.FromRgb(0xA8, 0x68, 0x00));
 
         // Compiled regexes — avoid recompiling per keystroke
-        private static readonly Regex RxHex = new(@"^(0[xX][0-9a-fA-F]+)(.*)$", RegexOptions.Compiled);
-        private static readonly Regex RxHexChk = new(@"^0[xX][0-9a-fA-F]+", RegexOptions.Compiled);
-        private static readonly Regex RxNum = new(@"^-?[0-9]+(\.[0-9]+)?$", RegexOptions.Compiled);
+        private static readonly Regex RxHex    = new(@"^(0[xX][0-9a-fA-F]+)(.*)$", RegexOptions.Compiled);
+        private static readonly Regex RxHexChk = new(@"^0[xX][0-9a-fA-F]+",        RegexOptions.Compiled);
+        private static readonly Regex RxNum    = new(@"^-?[0-9]+(\.[0-9]+)?$",      RegexOptions.Compiled);
 
-        private static readonly SolidColorBrush StatusSaved = new(Color.FromRgb(0x4E, 0xC9, 0x4E)); // green
+        private static readonly SolidColorBrush StatusSaved   = new(Color.FromRgb(0x4E, 0xC9, 0x4E)); // green
         private static readonly SolidColorBrush StatusUnsaved = new(Color.FromRgb(0xFF, 0xCC, 0x00)); // yellow
 
         private void SetDirty(bool dirty)
@@ -762,7 +760,7 @@ namespace ReXGlue_GUI
             _isDirty = dirty;
             if (string.IsNullOrWhiteSpace(_currentTomlPath)) return;
             string name = Path.GetFileName(_currentTomlPath);
-            textStatusLeft.Text = dirty ? $"{_currentTomlPath}  [unsaved]" : name;
+            textStatusLeft.Text      = dirty ? $"{_currentTomlPath}  [unsaved]" : name;
             textStatusLeft.Foreground = dirty ? StatusUnsaved : StatusSaved;
         }
 
@@ -770,23 +768,23 @@ namespace ReXGlue_GUI
 
         private void textBoxTomlEditor_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+            bool ctrl  = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
             bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-            bool alt = Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
+            bool alt   = Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
 
             if (ctrl && !alt)
             {
                 switch (e.Key)
                 {
-                    case Key.S: buttonSave_Click(sender, e); e.Handled = true; return;
-                    case Key.F: OpenFindBar(replace: false); e.Handled = true; return;
-                    case Key.H: OpenFindBar(replace: true); e.Handled = true; return;
-                    case Key.G: GoToLine(); e.Handled = true; return;
-                    case Key.D: DuplicateLine(); e.Handled = true; return;
+                    case Key.S:           buttonSave_Click(sender, e);   e.Handled = true; return;
+                    case Key.F:           OpenFindBar(replace: false);   e.Handled = true; return;
+                    case Key.H:           OpenFindBar(replace: true);    e.Handled = true; return;
+                    case Key.G:           GoToLine();                    e.Handled = true; return;
+                    case Key.D:           DuplicateLine();               e.Handled = true; return;
                     case Key.OemQuestion:
-                    case Key.Divide: ToggleLineComment(); e.Handled = true; return;
-                    case Key.Home: textBoxTomlEditor.CaretPosition = textBoxTomlEditor.Document.ContentStart; e.Handled = true; return;
-                    case Key.End: textBoxTomlEditor.CaretPosition = textBoxTomlEditor.Document.ContentEnd; e.Handled = true; return;
+                    case Key.Divide:      ToggleLineComment();           e.Handled = true; return;
+                    case Key.Home:        textBoxTomlEditor.CaretPosition = textBoxTomlEditor.Document.ContentStart; e.Handled = true; return;
+                    case Key.End:         textBoxTomlEditor.CaretPosition = textBoxTomlEditor.Document.ContentEnd;   e.Handled = true; return;
                 }
             }
 
@@ -794,7 +792,7 @@ namespace ReXGlue_GUI
             {
                 switch (e.Key)
                 {
-                    case Key.Up: MoveLineUp(); e.Handled = true; return;
+                    case Key.Up:   MoveLineUp();   e.Handled = true; return;
                     case Key.Down: MoveLineDown(); e.Handled = true; return;
                 }
             }
@@ -815,7 +813,7 @@ namespace ReXGlue_GUI
             try
             {
                 var caret = textBoxTomlEditor.CaretPosition;
-                int line = 1;
+                int line  = 1;
                 foreach (Block b in textBoxTomlEditor.Document.Blocks)
                 {
                     if (b is Paragraph para)
@@ -835,10 +833,10 @@ namespace ReXGlue_GUI
 
         private void OpenFindBar(bool replace)
         {
-            var replaceVis = replace ? Visibility.Visible : Visibility.Collapsed;
-            findBar.Visibility = Visibility.Visible;
-            labelReplace.Visibility = replaceVis;
-            textBoxReplace.Visibility = replaceVis;
+            var replaceVis              = replace ? Visibility.Visible : Visibility.Collapsed;
+            findBar.Visibility          = Visibility.Visible;
+            labelReplace.Visibility     = replaceVis;
+            textBoxReplace.Visibility   = replaceVis;
             buttonReplaceOne.Visibility = replaceVis;
             buttonReplaceAll.Visibility = replaceVis;
             if (!textBoxTomlEditor.Selection.IsEmpty)
@@ -853,7 +851,7 @@ namespace ReXGlue_GUI
             findBar.Visibility = Visibility.Collapsed;
             ClearFindHighlights();
             _findMatches.Clear();
-            _findIndex = -1;
+            _findIndex        = -1;
             textFindInfo.Text = string.Empty;
             textBoxTomlEditor.Focus();
         }
@@ -862,18 +860,18 @@ namespace ReXGlue_GUI
 
         private void textBoxFind_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Enter) { (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? (Action)FindPrev : FindNext)(); e.Handled = true; }
+            if      (e.Key == Key.Enter)  { (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? (Action)FindPrev : FindNext)(); e.Handled = true; }
             else if (e.Key == Key.Escape) { CloseFindBar(); e.Handled = true; }
         }
 
         private void textBoxReplace_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Enter) { buttonReplaceOne_Click(sender, e); e.Handled = true; }
-            else if (e.Key == Key.Escape) { CloseFindBar(); e.Handled = true; }
+            if      (e.Key == Key.Enter)  { buttonReplaceOne_Click(sender, e); e.Handled = true; }
+            else if (e.Key == Key.Escape) { CloseFindBar();                    e.Handled = true; }
         }
 
-        private void buttonFindNext_Click(object sender, RoutedEventArgs e) => FindNext();
-        private void buttonFindPrev_Click(object sender, RoutedEventArgs e) => FindPrev();
+        private void buttonFindNext_Click(object sender, RoutedEventArgs e)  => FindNext();
+        private void buttonFindPrev_Click(object sender, RoutedEventArgs e)  => FindPrev();
         private void buttonFindClose_Click(object sender, RoutedEventArgs e) => CloseFindBar();
 
         private void buttonReplaceOne_Click(object sender, RoutedEventArgs e)
@@ -887,9 +885,9 @@ namespace ReXGlue_GUI
         {
             string find = textBoxFind.Text;
             if (string.IsNullOrEmpty(find)) return;
-            string text = GetEditorText();
-            string esc = Regex.Escape(find);
-            int count = Regex.Matches(text, esc, RegexOptions.IgnoreCase).Count;
+            string text  = GetEditorText();
+            string esc   = Regex.Escape(find);
+            int count    = Regex.Matches(text, esc, RegexOptions.IgnoreCase).Count;
             SetEditorText(Regex.Replace(text, esc, textBoxReplace.Text, RegexOptions.IgnoreCase));
             textFindInfo.Text = $"{count} replacement(s) made";
             AppendOutput($"[Replace All] '{find}' → '{textBoxReplace.Text}' ({count} replacements)");
@@ -952,7 +950,7 @@ namespace ReXGlue_GUI
                 if (pos.GetAdjacentElement(LogicalDirection.Forward) is not Run run) continue;
                 int idx = run.Text.IndexOf(query, StringComparison.OrdinalIgnoreCase);
                 if (idx < 0) continue;
-                var s = run.ContentStart.GetPositionAtOffset(idx);
+                var s  = run.ContentStart.GetPositionAtOffset(idx);
                 var e2 = run.ContentStart.GetPositionAtOffset(idx + query.Length);
                 if (s != null && e2 != null) return new TextRange(s, e2);
             }
@@ -974,9 +972,9 @@ namespace ReXGlue_GUI
         {
             var para = textBoxTomlEditor.CaretPosition.Paragraph;
             if (para == null) return;
-            var range = new TextRange(para.ContentStart, para.ContentEnd);
+            var range   = new TextRange(para.ContentStart, para.ContentEnd);
             string line = range.Text;
-            range.Text = line.TrimStart().StartsWith('#')
+            range.Text  = line.TrimStart().StartsWith('#')
                 ? line.TrimStart()[1..].TrimStart()
                 : "# " + line;
             HighlightDocument();
@@ -1019,13 +1017,13 @@ namespace ReXGlue_GUI
 
         private void IndentSelection(int direction)
         {
-            var sel = textBoxTomlEditor.Selection;
+            var sel   = textBoxTomlEditor.Selection;
             var start = sel.Start.Paragraph;
-            var end = sel.End.Paragraph;
+            var end   = sel.End.Paragraph;
             if (start == null) return;
             for (var para = start; para != null; para = para.NextBlock as Paragraph)
             {
-                var range = new TextRange(para.ContentStart, para.ContentEnd);
+                var range  = new TextRange(para.ContentStart, para.ContentEnd);
                 range.Text = direction > 0
                     ? "\t" + range.Text
                     : (range.Text.Length > 0 && range.Text[0] == '\t' ? range.Text[1..] : range.Text);
@@ -1097,7 +1095,7 @@ namespace ReXGlue_GUI
             if (eq > 0)
             {
                 para.Inlines.Add(new Run(line[..eq]) { Foreground = ColKey });
-                para.Inlines.Add(new Run("=") { Foreground = ColEquals });
+                para.Inlines.Add(new Run("=")        { Foreground = ColEquals });
                 AddValueRuns(para, line[(eq + 1)..]);
                 return;
             }
@@ -1110,27 +1108,27 @@ namespace ReXGlue_GUI
             if (bo >= 0)
             {
                 if (bo > 0) para.Inlines.Add(new Run(value[..bo]) { Foreground = ColDefault });
-                int bc = value.LastIndexOf('}');
-                string inner = bc > bo ? value[(bo + 1)..bc] : value[(bo + 1)..];
+                int bc          = value.LastIndexOf('}');
+                string inner    = bc > bo ? value[(bo + 1)..bc] : value[(bo + 1)..];
                 string trailing = bc > 0 && bc < value.Length - 1 ? value[(bc + 1)..] : string.Empty;
                 para.Inlines.Add(new Run("{") { Foreground = ColBrace });
                 var parts = inner.Split(',');
                 for (int i = 0; i < parts.Length; i++)
                 {
-                    string p = parts[i];
-                    int ns = p.Length - p.TrimStart().Length;
-                    int ts = p.Length - p.TrimEnd().Length;
-                    if (ns > 0) para.Inlines.Add(new Run(p[..ns]) { Foreground = ColDefault });
+                    string p  = parts[i];
+                    int    ns = p.Length - p.TrimStart().Length;
+                    int    ts = p.Length - p.TrimEnd().Length;
+                    if (ns > 0) para.Inlines.Add(new Run(p[..ns])            { Foreground = ColDefault });
                     if (ns < p.Length) para.Inlines.Add(new Run(p[ns..].TrimEnd()) { Foreground = ColIdent });
                     if (ts > 0) para.Inlines.Add(new Run(new string(' ', ts)) { Foreground = ColDefault });
-                    if (i < parts.Length - 1) para.Inlines.Add(new Run(",") { Foreground = ColBrace });
+                    if (i < parts.Length - 1) para.Inlines.Add(new Run(",")  { Foreground = ColBrace });
                 }
                 para.Inlines.Add(new Run("}") { Foreground = ColBrace });
                 if (!string.IsNullOrEmpty(trailing)) para.Inlines.Add(new Run(trailing) { Foreground = ColDefault });
                 return;
             }
 
-            string v = value.TrimStart();
+            string v    = value.TrimStart();
             string lead = value[..^v.Length];
             if (lead.Length > 0) para.Inlines.Add(new Run(lead) { Foreground = ColDefault });
 
@@ -1141,9 +1139,9 @@ namespace ReXGlue_GUI
                 if (m.Groups[2].Length > 0) para.Inlines.Add(new Run(m.Groups[2].Value) { Foreground = ColDefault });
                 return;
             }
-            if (v.StartsWith('"')) { para.Inlines.Add(new Run(v) { Foreground = ColString }); return; }
-            if (v is "true" or "false") { para.Inlines.Add(new Run(v) { Foreground = ColBool }); return; }
-            if (RxNum.IsMatch(v)) { para.Inlines.Add(new Run(v) { Foreground = ColNumber }); return; }
+            if (v.StartsWith('"'))           { para.Inlines.Add(new Run(v) { Foreground = ColString }); return; }
+            if (v is "true" or "false")      { para.Inlines.Add(new Run(v) { Foreground = ColBool });   return; }
+            if (RxNum.IsMatch(v))            { para.Inlines.Add(new Run(v) { Foreground = ColNumber }); return; }
             para.Inlines.Add(new Run(v) { Foreground = ColDefault });
         }
 
@@ -1199,7 +1197,7 @@ namespace ReXGlue_GUI
             string? s = BrowseForFile("Select TOML config file", "TOML files (*.toml)|*.toml|All files (*.*)|*.*");
             if (s == null) return;
             textBoxCodeGenFile.Text = s;
-            textBoxCodeGenDir.Text = Path.GetDirectoryName(s) ?? string.Empty;
+            textBoxCodeGenDir.Text  = Path.GetDirectoryName(s) ?? string.Empty;
             LoadTomlFile(s);
         }
 
@@ -1216,13 +1214,13 @@ namespace ReXGlue_GUI
         private void LoadTomlFile(string path)
         {
             if (!File.Exists(path)) return;
-            _currentTomlPath = path;
+            _currentTomlPath    = path;
             textBreadcrumb.Text = path;
             textStatusLeft.Text = Path.GetFileName(path);
             textStatusLeft.Foreground = StatusSaved;
             _isDirty = false;
             SaveLastTomlPath(path);
-            try { SetEditorText(File.ReadAllText(path)); }
+            try   { SetEditorText(File.ReadAllText(path)); }
             catch (Exception ex) { AppendOutput($"[Error loading TOML] {ex.Message}"); }
         }
 
@@ -1284,7 +1282,7 @@ namespace ReXGlue_GUI
             }
 
             var (_, funcEnd) = FindFunctionSection(tomlLines);
-            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var existing     = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = headerIdx + 1; i < funcEnd; i++)
             {
                 string s = tomlLines[i].Trim();
@@ -1313,16 +1311,16 @@ namespace ReXGlue_GUI
             var (funcStart, funcEnd) = FindFunctionSection(lines);
             if (funcStart < 0) { MessageBox.Show("No [functions] section found.", "Remove Dupes", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seen     = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var newLines = new List<string>(lines.Count);
-            int removed = 0;
+            int removed  = 0;
 
             for (int i = 0; i < lines.Count; i++)
             {
                 string line = lines[i];
                 if (i > funcStart && i < funcEnd && line.TrimStart().StartsWith("0x", StringComparison.OrdinalIgnoreCase))
                 {
-                    int eq = line.IndexOf('=');
+                    int eq    = line.IndexOf('=');
                     string key = (eq >= 0 ? line[..eq].Trim() : line.Trim()).ToLowerInvariant();
                     if (!seen.Add(key)) { removed++; continue; }
                 }
@@ -1339,7 +1337,7 @@ namespace ReXGlue_GUI
             if (sender is Button btn && btn.ContextMenu != null)
             {
                 btn.ContextMenu.PlacementTarget = btn;
-                btn.ContextMenu.IsOpen = true;
+                btn.ContextMenu.IsOpen          = true;
             }
         }
 
@@ -1347,9 +1345,9 @@ namespace ReXGlue_GUI
         {
             if (sender is not MenuItem mi || mi.Tag is not string tag) return;
             ClearFunctionValues(
-                clearName: tag is "All" or "Name",
+                clearName:   tag is "All" or "Name",
                 clearParent: tag is "All" or "Parent",
-                clearSize: tag is "All" or "Size");
+                clearSize:   tag is "All" or "Size");
         }
 
         private void ClearFunctionValues(bool clearName, bool clearParent, bool clearSize)
@@ -1359,7 +1357,7 @@ namespace ReXGlue_GUI
             if (funcStart < 0) { MessageBox.Show("No [functions] section found.", "Clear Values", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
             var newLines = new List<string>(lines.Count);
-            int cleared = 0;
+            int cleared  = 0;
 
             for (int i = 0; i < lines.Count; i++)
             {
@@ -1369,13 +1367,13 @@ namespace ReXGlue_GUI
                     int eq = line.IndexOf('=');
                     if (eq >= 0)
                     {
-                        string addr = line[..eq].Trim();
+                        string addr   = line[..eq].Trim();
                         string valStr = line[(eq + 1)..].Trim();
                         if (clearName && clearParent && clearSize) { newLines.Add($"{addr} = {{}}"); cleared++; continue; }
-                        var inner = ParseBraceFields(valStr);
-                        bool changed = (clearName && inner.Remove("name"))
+                        var inner   = ParseBraceFields(valStr);
+                        bool changed = (clearName   && inner.Remove("name"))
                                      | (clearParent && inner.Remove("parent"))
-                                     | (clearSize && inner.Remove("size"));
+                                     | (clearSize   && inner.Remove("size"));
                         if (changed) { newLines.Add($"{addr} = {RebuildBraceFields(inner)}"); cleared++; continue; }
                     }
                 }
@@ -1386,21 +1384,21 @@ namespace ReXGlue_GUI
             SetEditorText(string.Join("\n", newLines));
 
             var parts = new List<string>(3);
-            if (clearName) parts.Add("name");
+            if (clearName)   parts.Add("name");
             if (clearParent) parts.Add("parent");
-            if (clearSize) parts.Add("size");
+            if (clearSize)   parts.Add("size");
             AppendOutput($"[Clear Values] Cleared {string.Join("/", parts)} from {cleared} function(s).");
         }
 
         private static Dictionary<string, string> ParseBraceFields(string val)
         {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            string t = val.Trim().TrimStart('{').TrimEnd('}').Trim();
+            var result  = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string t    = val.Trim().TrimStart('{').TrimEnd('}').Trim();
             if (string.IsNullOrWhiteSpace(t)) return result;
             foreach (string pair in t.Split(','))
             {
                 var kv = pair.Split('=', 2, StringSplitOptions.TrimEntries);
-                if (kv.Length == 2) result[kv[0]] = kv[1];
+                if      (kv.Length == 2)                                      result[kv[0]] = kv[1];
                 else if (kv.Length == 1 && !string.IsNullOrWhiteSpace(kv[0])) result[kv[0]] = "";
             }
             return result;
@@ -1416,7 +1414,7 @@ namespace ReXGlue_GUI
         {
             if (!Require(_currentTomlPath, "No file loaded.", "Nothing to Back Up")) return;
             string backup = $"{_currentTomlPath}.bak_{DateTime.Now:yyyyMMdd_HHmmss}";
-            try { File.WriteAllText(backup, GetEditorText()); AppendOutput($"[Backup Saved] {backup}"); }
+            try   { File.WriteAllText(backup, GetEditorText()); AppendOutput($"[Backup Saved] {backup}"); }
             catch (Exception ex) { MessageBox.Show($"Backup failed:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
@@ -1435,11 +1433,11 @@ namespace ReXGlue_GUI
             if (string.IsNullOrWhiteSpace(_currentTomlPath) || !File.Exists(_currentTomlPath))
             { MessageBox.Show("No TOML config file loaded. Load a file in the Code Gen tab first.", "No Config", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
-            string dir = Path.GetDirectoryName(_currentTomlPath) ?? string.Empty;
+            string dir  = Path.GetDirectoryName(_currentTomlPath) ?? string.Empty;
             string args = $"codegen \"{_currentTomlPath}\"";
 
             var codeGenBtn = (Button)sender;
-            codeGenBtn.IsEnabled = false;
+            codeGenBtn.IsEnabled   = false;
             tabBtnOutput.IsChecked = true;
             tabBtnOutput.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ToggleButton.CheckedEvent));
             AppendOutput($"[Run Code Generation]\n  Config:  {_currentTomlPath}\n  Command: rexglue {args}");
@@ -1475,8 +1473,8 @@ namespace ReXGlue_GUI
             //   "  0x82171220 from 0x82171F54: ..."          (UnresolvedCall)
             //   "  Unresolved conditional branch to 0x822F7918 from 0x822F7928"
             var addrRegex = new Regex(@"(?:to\s+)?(0x[0-9a-fA-F]+)\s+from\s+0x[0-9a-fA-F]+", RegexOptions.IgnoreCase);
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var newAddrs = new List<string>();
+            var seen      = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var newAddrs  = new List<string>();
 
             lock (lines)
             {
@@ -1490,7 +1488,7 @@ namespace ReXGlue_GUI
 
             if (newAddrs.Count == 0) return;
 
-            var tomlLines = NormalizedLines(GetEditorText());
+            var tomlLines     = NormalizedLines(GetEditorText());
             var (ins, skipped) = InjectAddressesIntoFunctions(tomlLines, newAddrs);
 
             if (ins == 0)
@@ -1515,7 +1513,7 @@ namespace ReXGlue_GUI
         private UIElement MakeChip(string label, string value, bool isCustom)
         {
             var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 6, 4) };
-            var btn = new Button { Content = label, Style = (Style)FindResource("ChipBtn"), Tag = value };
+            var btn   = new Button { Content = label, Style = (Style)FindResource("ChipBtn"), Tag = value };
             btn.Click += (_, _) => ApplyTemplate(value);
             var close = new Button { Content = "×", Style = (Style)FindResource("ChipClose"), Tag = value };
             close.Click += (_, _) => (isCustom ? panelCustomTemplates : panelStarterTemplates).Children.Remove(panel);
@@ -1529,15 +1527,15 @@ namespace ReXGlue_GUI
             // Keep the leading "= " so output is "0xADDR = {}" not "0xADDR {}"
             if (!pattern.TrimStart().StartsWith('='))
                 pattern = "= " + pattern.TrimStart();
-            var paras = textBoxTomlEditor.Document.Blocks.OfType<Paragraph>().ToList();
+            var paras    = textBoxTomlEditor.Document.Blocks.OfType<Paragraph>().ToList();
             if (paras.Count == 0) return;
 
             var selStart = textBoxTomlEditor.Selection.Start;
-            var selEnd = textBoxTomlEditor.Selection.End;
-            int fromIdx = paras.FindIndex(p => p.ContentStart.CompareTo(selStart) <= 0 && p.ContentEnd.CompareTo(selStart) >= 0);
-            int toIdx = paras.FindIndex(p => p.ContentStart.CompareTo(selEnd) <= 0 && p.ContentEnd.CompareTo(selEnd) >= 0);
+            var selEnd   = textBoxTomlEditor.Selection.End;
+            int fromIdx  = paras.FindIndex(p => p.ContentStart.CompareTo(selStart) <= 0 && p.ContentEnd.CompareTo(selStart) >= 0);
+            int toIdx    = paras.FindIndex(p => p.ContentStart.CompareTo(selEnd)   <= 0 && p.ContentEnd.CompareTo(selEnd)   >= 0);
             if (fromIdx < 0) fromIdx = 0;
-            if (toIdx < 0) toIdx = paras.Count - 1;
+            if (toIdx   < 0) toIdx   = paras.Count - 1;
 
             int changed = 0;
             _suppressEditorUpdate = true;
@@ -1545,12 +1543,12 @@ namespace ReXGlue_GUI
             {
                 for (int i = fromIdx; i <= toIdx; i++)
                 {
-                    var range = new TextRange(paras[i].ContentStart, paras[i].ContentEnd);
+                    var range   = new TextRange(paras[i].ContentStart, paras[i].ContentEnd);
                     string line = range.Text.Trim();
-                    int eq = line.IndexOf('=');
-                    string key = eq >= 0 ? line[..eq].Trim() : line;
+                    int eq      = line.IndexOf('=');
+                    string key  = eq >= 0 ? line[..eq].Trim() : line;
                     string addr = key.Replace("0x", "").Replace("0X", "");
-                    range.Text = string.IsNullOrWhiteSpace(range.Text)
+                    range.Text  = string.IsNullOrWhiteSpace(range.Text)
                         ? pattern.Replace("%ADDR%", addr)
                         : key + " " + pattern.Replace("%ADDR%", addr);
                     changed++;
@@ -1580,9 +1578,9 @@ namespace ReXGlue_GUI
 
         private static void TogglePanel(UIElement panel, Button btn, string label)
         {
-            bool show = panel.Visibility != Visibility.Visible;
+            bool show  = panel.Visibility != Visibility.Visible;
             panel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            btn.Content = (show ? "▾ " : "▸ ") + label;
+            btn.Content      = (show ? "▾ " : "▸ ") + label;
         }
 
         private void buttonAddCustomTemplate_Click(object sender, RoutedEventArgs e)
@@ -1604,7 +1602,7 @@ namespace ReXGlue_GUI
             string t = new TextRange(textBoxAddressResult.Document.ContentStart,
                                      textBoxAddressResult.Document.ContentEnd).Text.Trim();
             if (string.IsNullOrEmpty(t)) { MessageBox.Show("Nothing to copy.", "Address Parser", MessageBoxButton.OK, MessageBoxImage.Information); return; }
-            try { Clipboard.SetText(t); AppendOutput("[Address Parser] Output copied to clipboard."); }
+            try   { Clipboard.SetText(t); AppendOutput("[Address Parser] Output copied to clipboard."); }
             catch (Exception ex) { MessageBox.Show(ex.Message, "Copy failed", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
@@ -1614,7 +1612,7 @@ namespace ReXGlue_GUI
             if (string.IsNullOrWhiteSpace(text)) { MessageBox.Show("Input is empty.", "Address Parser", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
             // ── Parse unique addresses from input ─────────────────────────
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seen   = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var parsed = new List<string>();
 
             foreach (string rawLine in text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
@@ -1636,8 +1634,8 @@ namespace ReXGlue_GUI
             { MessageBox.Show("No addresses found.", "Address Parser", MessageBoxButton.OK, MessageBoxImage.Information); return; }
 
             // ── Inject into TOML (shared helper handles dedup + section creation) ──
-            var tomlLines = NormalizedLines(GetEditorText());
-            var (ins, skipped) = InjectAddressesIntoFunctions(tomlLines, parsed);
+            var tomlLines         = NormalizedLines(GetEditorText());
+            var (ins, skipped)    = InjectAddressesIntoFunctions(tomlLines, parsed);
 
             // Rebuild existing set for the result renderer (after injection)
             var (funcStart2, funcEnd2) = FindFunctionSection(tomlLines);
@@ -1675,9 +1673,9 @@ namespace ReXGlue_GUI
             {
                 bool isDupe = !existingAfter.Contains(addr) && skipped > 0;
                 var para = new Paragraph { Margin = ZeroMargin, FontFamily = MonoFont, FontSize = 12 };
-                para.Inlines.Add(new Run(addr + " ") { Foreground = isDupe ? OutWarn : OutInfo });
-                para.Inlines.Add(new Run("= ") { Foreground = OutDefault });
-                para.Inlines.Add(new Run("{}") { Foreground = isDupe ? OutWarn : ColBrace });
+                para.Inlines.Add(new Run(addr + " ")    { Foreground = isDupe ? OutWarn : OutInfo });
+                para.Inlines.Add(new Run("= ")          { Foreground = OutDefault });
+                para.Inlines.Add(new Run("{}")          { Foreground = isDupe ? OutWarn : ColBrace });
                 if (isDupe)
                     para.Inlines.Add(new Run("  // duplicate") { Foreground = OutDim });
                 textBoxAddressResult.Document.Blocks.Add(para);
@@ -1687,15 +1685,15 @@ namespace ReXGlue_GUI
         // ── OUTPUT LOG ────────────────────────────────────────────────────
 
         // Colour palette matching image 2
-        private static readonly SolidColorBrush OutOk = new(Color.FromRgb(0x4E, 0xC9, 0x4E)); // green   [ OK ]
-        private static readonly SolidColorBrush OutInfo = new(Color.FromRgb(0x4F, 0xC1, 0xFF)); // cyan    [INFO]
-        private static readonly SolidColorBrush OutWarn = new(Color.FromRgb(0xFF, 0xCC, 0x00)); // yellow  [warning]
-        private static readonly SolidColorBrush OutErr = new(Color.FromRgb(0xF4, 0x47, 0x47)); // red     [ERR]
+        private static readonly SolidColorBrush OutOk      = new(Color.FromRgb(0x4E, 0xC9, 0x4E)); // green   [ OK ]
+        private static readonly SolidColorBrush OutInfo    = new(Color.FromRgb(0x4F, 0xC1, 0xFF)); // cyan    [INFO]
+        private static readonly SolidColorBrush OutWarn    = new(Color.FromRgb(0xFF, 0xCC, 0x00)); // yellow  [warning]
+        private static readonly SolidColorBrush OutErr     = new(Color.FromRgb(0xF4, 0x47, 0x47)); // red     [ERR]
         private static readonly SolidColorBrush OutDefault = new(Color.FromRgb(0xCC, 0xCC, 0xCC)); // grey    plain
-        private static readonly SolidColorBrush OutDim = new(Color.FromRgb(0x77, 0x77, 0x77)); // dimgrey indented
+        private static readonly SolidColorBrush OutDim     = new(Color.FromRgb(0x77, 0x77, 0x77)); // dimgrey indented
 
-        private static readonly FontFamily MonoFont = new("Consolas");
-        private static readonly Thickness ZeroMargin = new(0);
+        private static readonly FontFamily      MonoFont   = new("Consolas");
+        private static readonly Thickness       ZeroMargin = new(0);
 
         // Prefixes that get a [HH:mm:ss] timestamp prepended
         private static readonly string[] InternalPrefixes =
@@ -1711,7 +1709,7 @@ namespace ReXGlue_GUI
         {
             string t = GetOutputText().Trim();
             if (string.IsNullOrEmpty(t)) { AppendOutput("[Output] Tab is empty."); return; }
-            try { Clipboard.SetText(t); AppendOutput("[ OK ]  Output copied to clipboard."); }
+            try   { Clipboard.SetText(t); AppendOutput("[ OK ]  Output copied to clipboard."); }
             catch (Exception ex) { MessageBox.Show(ex.Message, "Copy failed", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
@@ -1719,7 +1717,7 @@ namespace ReXGlue_GUI
         {
             string t = GetOutputText().Trim();
             if (string.IsNullOrEmpty(t)) { AppendOutput("[Output] Tab is empty."); return; }
-            textBoxAddress.Text = t;
+            textBoxAddress.Text        = t;
             tabBtnAddrParser.IsChecked = true;
         }
         private void buttonOutputClear_Click(object sender, RoutedEventArgs e) =>
@@ -1732,24 +1730,24 @@ namespace ReXGlue_GUI
         private static SolidColorBrush ClassifyLine(string line)
         {
             string t = line.TrimStart();
-            if (t.StartsWith("[ OK ]", StringComparison.OrdinalIgnoreCase) ||
-                t.StartsWith("[OK]", StringComparison.OrdinalIgnoreCase)) return OutOk;
-            if (t.StartsWith("[INFO]", StringComparison.OrdinalIgnoreCase)) return OutInfo;
-            if (t.StartsWith("[warning]", StringComparison.OrdinalIgnoreCase)) return OutWarn;
-            if (t.StartsWith("[ERR]", StringComparison.OrdinalIgnoreCase) ||
-                t.StartsWith("[error]", StringComparison.OrdinalIgnoreCase)) return OutErr;
-            if (t.StartsWith("[info]", StringComparison.OrdinalIgnoreCase)) return OutInfo;
-            if (line.Length > 0 && (line[0] == ' ' || line[0] == '\t')) return OutDim;
+            if (t.StartsWith("[ OK ]",   StringComparison.OrdinalIgnoreCase) ||
+                t.StartsWith("[OK]",     StringComparison.OrdinalIgnoreCase))  return OutOk;
+            if (t.StartsWith("[INFO]",   StringComparison.OrdinalIgnoreCase))  return OutInfo;
+            if (t.StartsWith("[warning]",StringComparison.OrdinalIgnoreCase))  return OutWarn;
+            if (t.StartsWith("[ERR]",    StringComparison.OrdinalIgnoreCase) ||
+                t.StartsWith("[error]",  StringComparison.OrdinalIgnoreCase))  return OutErr;
+            if (t.StartsWith("[info]",   StringComparison.OrdinalIgnoreCase))  return OutInfo;
+            if (line.Length > 0 && (line[0] == ' ' || line[0] == '\t'))       return OutDim;
             return OutDefault;
         }
 
         private Paragraph MakeOutputPara(string line, SolidColorBrush? color = null) =>
             new(new Run(line))
             {
-                Margin = ZeroMargin,
+                Margin     = ZeroMargin,
                 Foreground = color ?? ClassifyLine(line),
                 FontFamily = MonoFont,
-                FontSize = 12
+                FontSize   = 12
             };
 
         // Append one or more lines with per-line colouring.
@@ -1789,17 +1787,17 @@ namespace ReXGlue_GUI
         private static extern int CreateBindCtx(uint reserved, out IntPtr ppbc);
 
         // ── State ─────────────────────────────────────────────────────────
-        private DispatcherTimer? _vsWatchTimer = null;
-        private System.Threading.CancellationTokenSource? _vsCts = null;
-        private bool _vsPollingActive = false;
-        private string _lastVsSnapshot = string.Empty;
-        private string _vsExpression = "ctx.ctr.u32";
-        private const int VsArrayLimit = 64;
+        private DispatcherTimer?                          _vsWatchTimer   = null;
+        private System.Threading.CancellationTokenSource? _vsCts          = null;
+        private bool   _vsPollingActive = false;
+        private string _lastVsSnapshot  = string.Empty;
+        private string _vsExpression    = "ctx.ctr.u32";
+        private const  int VsArrayLimit = 64;
 
         // Cached references to VS-debugger UI controls (set on first use)
-        private TextBlock? _tbVsStatus = null;
-        private Ellipse? _elVsDot = null;
-        private TextBox? _tbVsInterval = null;
+        private TextBlock?  _tbVsStatus   = null;
+        private Ellipse?    _elVsDot      = null;
+        private TextBox?    _tbVsInterval = null;
         private System.Windows.Controls.Primitives.ToggleButton? _toggleVsPoll = null;
 
         private static readonly Regex RxVsScalar =
@@ -1815,7 +1813,11 @@ namespace ReXGlue_GUI
             try
             {
                 var entries = await Task.Run(EvaluateCtxCtrInVs);
-                if (entries != null) ProcessCtrEntries(entries, autoSave: true);
+                if (entries != null)
+                {
+                    AppendOutput("[VS Debugger] Stopped debug session in Visual Studio.", OutInfo);
+                    ProcessCtrEntries(entries, autoSave: true);
+                }
             }
             catch (Exception ex) { SetVsStatus($"Error: {ex.Message}", OutErr, active: false); }
         }
@@ -1824,10 +1826,10 @@ namespace ReXGlue_GUI
         {
             if (_vsPollingActive) return;
             _vsPollingActive = true;
-            _vsCts = new System.Threading.CancellationTokenSource();
-            int interval = GetVsPollInterval();
+            _vsCts           = new System.Threading.CancellationTokenSource();
+            int interval     = GetVsPollInterval();
 
-            _vsWatchTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(interval) };
+            _vsWatchTimer       = new DispatcherTimer { Interval = TimeSpan.FromSeconds(interval) };
             _vsWatchTimer.Tick += async (_, _) =>
             {
                 if (_vsCts?.IsCancellationRequested == true) { StopVsPollingInternal(); return; }
@@ -1849,7 +1851,7 @@ namespace ReXGlue_GUI
         private void StopVsPollingInternal()
         {
             _vsWatchTimer?.Stop();
-            _vsWatchTimer = null;
+            _vsWatchTimer    = null;
             _vsCts?.Cancel();
             _vsPollingActive = false;
             SetVsStatus("Polling stopped.", OutWarn, active: false);
@@ -1868,7 +1870,7 @@ namespace ReXGlue_GUI
                 return null;
 
             var rot = (IRunningObjectTable)Marshal.GetObjectForIUnknown(rotPtr);
-            var bc = (IBindCtx)Marshal.GetObjectForIUnknown(bcPtr);
+            var bc  = (IBindCtx)Marshal.GetObjectForIUnknown(bcPtr);
             Marshal.Release(rotPtr);
             Marshal.Release(bcPtr);
 
@@ -1904,7 +1906,7 @@ namespace ReXGlue_GUI
 
             try
             {
-                var dbg = (Debugger2)dte.Debugger;
+                var dbg    = (Debugger2)dte.Debugger;
                 string expr = _vsExpression.Trim();
 
                 var exprObj = dbg.GetExpression(expr, UseAutoExpandRules: true, Timeout: 2000);
@@ -1918,6 +1920,11 @@ namespace ReXGlue_GUI
                 var result = ParseVsValue(exprObj.Value ?? string.Empty, dbg, expr);
                 Dispatcher.Invoke(() => SetVsStatus(
                     $"Got {result.Count} value(s) from VS.", OutOk, active: _vsPollingActive));
+
+                // Stop the debug session now that we have what we need
+                try { dbg.TerminateAll(); }
+                catch { /* non-fatal — debuggee may have already exited */ }
+
                 return result;
             }
             finally { Marshal.ReleaseComObject(dte); }
@@ -1993,7 +2000,7 @@ namespace ReXGlue_GUI
 
             // Inject each candidate with its index comment
             var (_, funcEnd) = FindFunctionSection(tomlLines);
-            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var existing     = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = headerIdx + 1; i < funcEnd; i++)
             {
                 string s = tomlLines[i].Trim();
@@ -2008,7 +2015,7 @@ namespace ReXGlue_GUI
                 string hex = $"0x{val:X8}";
                 if (existing.Add(hex.ToLowerInvariant()))
                 {
-                    tomlLines.Insert(insertAt++, $"{hex} = {{}}");
+                    tomlLines.Insert(insertAt++, $"{hex} = {{}}  # ctx.ctr.u32[{idx}]");
                     inserted++;
                 }
             }
@@ -2046,9 +2053,9 @@ namespace ReXGlue_GUI
         private void SetVsStatus(string message, SolidColorBrush color, bool active)
         {
             _tbVsStatus ??= FindName("textBlockVsStatus") as TextBlock;
-            _elVsDot ??= FindName("ellipseVsDot") as Ellipse;
+            _elVsDot    ??= FindName("ellipseVsDot")      as Ellipse;
             if (_tbVsStatus != null) { _tbVsStatus.Text = message; _tbVsStatus.Foreground = color; }
-            if (_elVsDot != null)
+            if (_elVsDot    != null)
                 _elVsDot.Fill = (active || color == OutOk)
                     ? new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0x4E))
                     : new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
