@@ -1465,8 +1465,8 @@ namespace ReXGlue_GUI
             string dir  = Path.GetDirectoryName(_currentTomlPath) ?? string.Empty;
             string args = $"codegen \"{_currentTomlPath}\"";
 
-            var codeGenBtn = (Button)sender;
-            codeGenBtn.IsEnabled   = false;
+            var codeGenBtn = sender as Button;
+            if (codeGenBtn != null) codeGenBtn.IsEnabled = false;
             tabBtnOutput.IsChecked = true;
             tabBtnOutput.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ToggleButton.CheckedEvent));
             AppendOutput($"[Run Code Generation]\n  Config:  {_currentTomlPath}\n  Command: rexglue {args}");
@@ -1494,7 +1494,10 @@ namespace ReXGlue_GUI
                 AppendOutput($"[Run Code Generation Error] {ex.Message}");
                 MessageBox.Show($"Code generation failed:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-            finally { codeGenBtn.IsEnabled = true; }
+            finally
+            {
+                if (codeGenBtn != null) codeGenBtn.IsEnabled = true;
+            }
         }
 
         // Parse UnresolvedCall addresses from output, inject into TOML [functions], save, switch tab.
@@ -1821,6 +1824,7 @@ namespace ReXGlue_GUI
         private DTE2? _vsDte = null;
         private _dispDebuggerEvents_OnEnterBreakModeEventHandler? _vsBreakHandler = null;
         private bool    _vsPollingActive  = false; // true when Auto is on (event-based, no timer)
+        private int     _vsAutoFetchInFlight = 0;
         private string  _lastVsSnapshot   = string.Empty;
         private string  _vsExpression     = "ctx.ctr.u32";
         private bool    _runCodeGenTriggeredByVsFetch = false;
@@ -1878,12 +1882,17 @@ namespace ReXGlue_GUI
 
         private void OnVsEnterBreakMode(dbgEventReason Reason, ref dbgExecutionAction ExecutionAction)
         {
-            if (_vsDte == null || !_vsPollingActive) return;
-            try
+            if (!_vsPollingActive) return;
+            // Prevent re-entrancy if VS fires multiple break events quickly.
+            if (System.Threading.Interlocked.Exchange(ref _vsAutoFetchInFlight, 1) == 1) return;
+
+            _ = Task.Run(() =>
             {
-                var entries = EvaluateCtxCtrWithDte(_vsDte);
-                if (entries != null && entries.Count > 0)
+                try
                 {
+                    // Use the same safe path as manual Fetch: discover a break-mode VS via ROT.
+                    var entries = EvaluateCtxCtrInVs();
+                    if (entries == null || entries.Count == 0) return;
                     Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
                     {
                         if (!_vsPollingActive) return;
@@ -1891,12 +1900,15 @@ namespace ReXGlue_GUI
                         ProcessCtrEntries(entries, autoSave: true);
                     });
                 }
-            }
-            catch { /* swallow — will retry on next break */ }
+                catch { /* swallow — will retry on next break */ }
+                finally { System.Threading.Interlocked.Exchange(ref _vsAutoFetchInFlight, 0); }
+            });
         }
 
         private void StopVsPollingInternal()
         {
+            // Flip state first so any in-flight callbacks become no-ops.
+            _vsPollingActive = false;
             if (_vsDte != null)
             {
                 try
@@ -1905,11 +1917,10 @@ namespace ReXGlue_GUI
                         _vsDte.Events.DebuggerEvents.OnEnterBreakMode -= _vsBreakHandler;
                 }
                 catch { }
-                Marshal.ReleaseComObject(_vsDte);
+                try { Marshal.ReleaseComObject(_vsDte); } catch { }
                 _vsDte = null;
             }
             _vsBreakHandler = null;
-            _vsPollingActive = false;
             SetVsStatus("Auto-detect stopped.", OutWarn, active: false);
             _toggleVsPoll ??= FindName("toggleVsPoll") as System.Windows.Controls.Primitives.ToggleButton;
             if (_toggleVsPoll?.IsChecked == true)
