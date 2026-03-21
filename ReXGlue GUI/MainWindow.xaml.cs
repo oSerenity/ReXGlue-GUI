@@ -1364,10 +1364,10 @@ namespace ReXGlue_GUI
                 l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
             if (headerIdx < 0)
             {
-                int insertAt = IndexAfterLongjmpLine(tomlLines);
-                tomlLines.Insert(insertAt, string.Empty);
-                tomlLines.Insert(insertAt + 1, "[functions]");
-                headerIdx = insertAt + 1;
+                int headerInsertPos = IndexAfterLongjmpLine(tomlLines);
+                tomlLines.Insert(headerInsertPos, string.Empty);
+                tomlLines.Insert(headerInsertPos + 1, "[functions]");
+                headerIdx = headerInsertPos + 1;
             }
 
             var (_, funcEnd) = FindFunctionSection(tomlLines);
@@ -1380,13 +1380,13 @@ namespace ReXGlue_GUI
                 existing.Add(eq >= 0 ? s[..eq].Trim() : s);
             }
 
-            int inserted = 0, insertAt = headerIdx + 1, skipped = 0;
+            int inserted = 0, nextInsertIdx = headerIdx + 1, skipped = 0;
             foreach (string addr in addresses)
             {
                 if (existing.Add(addr))
                 {
                     string entry = comment != null ? $"{addr} = {{}}  {comment}" : $"{addr} = {{}}";
-                    tomlLines.Insert(insertAt++, entry);
+                    tomlLines.Insert(nextInsertIdx++, entry);
                     inserted++;
                 }
                 else skipped++;
@@ -2148,10 +2148,10 @@ namespace ReXGlue_GUI
                 l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
             if (headerIdx < 0)
             {
-                int insertAt = IndexAfterLongjmpLine(tomlLines);
-                tomlLines.Insert(insertAt, string.Empty);
-                tomlLines.Insert(insertAt + 1, "[functions]");
-                headerIdx = insertAt + 1;
+                int headerInsertPos = IndexAfterLongjmpLine(tomlLines);
+                tomlLines.Insert(headerInsertPos, string.Empty);
+                tomlLines.Insert(headerInsertPos + 1, "[functions]");
+                headerIdx = headerInsertPos + 1;
             }
 
             // Inject each candidate with its index comment
@@ -2165,13 +2165,13 @@ namespace ReXGlue_GUI
                 existing.Add(eq >= 0 ? s[..eq].Trim() : s);
             }
 
-            int inserted = 0, insertAt = headerIdx + 1;
+            int inserted = 0, nextInsertIdx = headerIdx + 1;
             foreach (var (idx, val) in candidates)
             {
                 string hex = $"0x{val:X8}";
                 if (existing.Add(hex.ToLowerInvariant()))
                 {
-                    tomlLines.Insert(insertAt++, $"{hex} = {{}}  # ctx.ctr.u32[{idx}]");
+                    tomlLines.Insert(nextInsertIdx++, $"{hex} = {{}}  # ctx.ctr.u32[{idx}]");
                     inserted++;
                 }
             }
