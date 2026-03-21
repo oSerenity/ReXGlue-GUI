@@ -11,6 +11,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="vsix\**" />
+    <EmbeddedResource Remove="vsix\**" />
+    <None Remove="vsix\**" />
+    <Page Remove="vsix\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="rex.ico" />
   </ItemGroup>
 

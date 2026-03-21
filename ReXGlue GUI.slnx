@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="ReXGlue GUI/ReXGlue_GUI.csproj" />
+  <Project Path="ReXGlue GUI/vsix/ReXGlue_REVS/ReXGlue_REVS/ReXGlue_REVS.csproj" Id="6a1eb21d-2131-4ecf-9e06-ba673b6830e3" />
 </Solution>
