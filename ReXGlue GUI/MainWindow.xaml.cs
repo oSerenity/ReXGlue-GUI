@@ -171,6 +171,50 @@ namespace ReXGlue_GUI
             try { return Path.GetFullPath(p.Trim()); } catch { return p.Trim(); }
         }
 
+        /// <summary>Derives the default executable name for launch.vs.json (e.g. "Army of Two" -> "army_of_two.exe").</summary>
+        private static string AppNameToExeName(string appName)
+        {
+            if (string.IsNullOrWhiteSpace(appName)) return "app.exe";
+            var sb = new System.Text.StringBuilder(appName.Trim().ToLowerInvariant());
+            for (int i = 0; i < sb.Length; i++)
+            {
+                if (sb[i] == ' ' || sb[i] == '-') sb[i] = '_';
+            }
+            if (sb.Length == 0) return "app.exe";
+            return sb.ToString().TrimEnd('_') + ".exe";
+        }
+
+        /// <summary>Writes .vs/launch.vs.json so the new project can be debugged from VS with the correct target and args.</summary>
+        private static void WriteLaunchVsJson(string projectRoot, string appName)
+        {
+            string vsDir = Path.Combine(projectRoot, ".vs");
+            Directory.CreateDirectory(vsDir);
+            string exeName = AppNameToExeName(appName);
+            string assetsPath = Path.Combine(projectRoot, "assets");
+            string assetsPathEscaped = assetsPath.Replace("\\", "\\\\");
+            string json =
+                "{\n" +
+                "  \"version\": \"0.2.1\",\n" +
+                "  \"defaults\": {},\n" +
+                "  \"configurations\": [\n" +
+                "    {\n" +
+                "      \"type\": \"default\",\n" +
+                "      \"project\": \"CMakeLists.txt\",\n" +
+                "      \"projectTarget\": \"" + exeName + "\",\n" +
+                "      \"name\": \"" + exeName + "\",\n" +
+                "      \"args\": [\n" +
+                "        \"" + assetsPathEscaped + "\",\n" +
+                "        \"--enable_console=true\",\n" +
+                "        \"--log_level=debug\",\n" +
+                "        \"--vsync=false\",\n" +
+                "        \"--log_file=logs/debug.log\"\n" +
+                "      ]\n" +
+                "    }\n" +
+                "  ]\n" +
+                "}\n";
+            File.WriteAllText(Path.Combine(vsDir, "launch.vs.json"), json);
+        }
+
         private static string? DeriveBaseFromRexsdk(string rexsdk)
         {
             if (string.IsNullOrWhiteSpace(rexsdk)) return null;
@@ -582,7 +626,15 @@ namespace ReXGlue_GUI
                 try { Directory.CreateDirectory(Path.Combine(fullPath, "assets")); } catch { }
 
                 if (initOk)
+                {
+                    try
+                    {
+                        WriteLaunchVsJson(fullPath, app);
+                        AppendOutput($"[Initialize Project] Created .vs/launch.vs.json for {AppNameToExeName(app)}", OutOk);
+                    }
+                    catch (Exception lex) { AppendOutput($"[Launch config] {lex.Message}"); }
                     MessageBox.Show($"Project initialized at:\n{fullPath}", "Initialize Project", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
                 else
                     MessageBox.Show($"rexglue exited with code {proc.ExitCode}.\nCheck the Output tab.", "Initialize Project", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
@@ -643,28 +695,23 @@ namespace ReXGlue_GUI
             if (text.Contains("[functions]"))
             { MessageBox.Show("[functions] section already exists.", "Already Present", MessageBoxButton.OK, MessageBoxImage.Information); return; }
 
-            var lines       = NormalizedLines(text);
-            int insertIndex = lines.Count;
-
-            var caretPara = textBoxTomlEditor.CaretPosition.Paragraph;
-            if (caretPara != null)
-            {
-                var paras = textBoxTomlEditor.Document.Blocks.OfType<Paragraph>().ToList();
-                int idx   = paras.IndexOf(caretPara);
-                if (idx >= 0 && idx < lines.Count) insertIndex = idx;
-            }
-
-            if (lines.Count == 0)
-                lines.Add("[functions]");
-            else if (insertIndex >= lines.Count)
-                lines[string.IsNullOrWhiteSpace(lines[^1]) ? lines.Count - 1 : lines.Count] = "[functions]";
-            else if (string.IsNullOrWhiteSpace(lines[insertIndex]))
-                lines[insertIndex] = "[functions]";
-            else
-                lines.Insert(insertIndex, "[functions]");
-
+            var lines = NormalizedLines(text);
+            int insertAt = IndexAfterLongjmpLine(lines);
+            lines.Insert(insertAt, string.Empty);
+            lines.Insert(insertAt + 1, "[functions]");
             SetEditorText(string.Join("\n", lines));
-            AppendOutput("[Functions] Wrote [functions] header at caret line.");
+            AppendOutput("[Functions] Wrote [functions] after longjmp_address (or at end if missing).");
+        }
+
+        /// <summary>Line index after longjmp_address row, or lines.Count if not found.</summary>
+        private static int IndexAfterLongjmpLine(List<string> lines)
+        {
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (lines[i].Trim().StartsWith("longjmp_address", StringComparison.OrdinalIgnoreCase))
+                    return i + 1;
+            }
+            return lines.Count;
         }
 
         private void buttonAddFunctionAddress_Click(object sender, RoutedEventArgs e)
@@ -693,7 +740,7 @@ namespace ReXGlue_GUI
             if (inserted == 0)
             { MessageBox.Show($"Address {addr} already exists under [functions].", "Already Present", MessageBoxButton.OK, MessageBoxImage.Information); return; }
             SetEditorText(string.Join("\n", lines));
-            AppendOutput($"[Functions] Added {addr} = {{}}");
+            AppendOutput($"[Functions] Added {addr} = {{}}", OutOk);
         }
 
         private static readonly Regex RxClipAddr =
@@ -714,10 +761,12 @@ namespace ReXGlue_GUI
         private void buttonWriteRexcrt_Click(object sender, RoutedEventArgs e)
         {
             string text = GetEditorText();
-            if (text.Contains("setjmp_address") || text.Contains("longjmp_address"))
-            { MessageBox.Show("setjmp/longjmp entries are already present.", "Already Present", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            if (text.IndexOf("[rexcrt]", StringComparison.OrdinalIgnoreCase) >= 0)
+            { MessageBox.Show("[rexcrt] section already present.", "Already Present", MessageBoxButton.OK, MessageBoxImage.Information); return; }
 
             var lines = NormalizedLines(text);
+            if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
+                lines.Add(string.Empty);
             lines.Add("[rexcrt]");
             SetEditorText(string.Join("\n", lines));
             AppendOutput("Wrote [rexcrt] header at end.");
@@ -738,7 +787,9 @@ namespace ReXGlue_GUI
         private static readonly SolidColorBrush ColSection  = new(Color.FromRgb(0x56, 0x9C, 0xD6));
         private static readonly SolidColorBrush ColKey      = new(Color.FromRgb(0x9C, 0xDC, 0xFE));
         private static readonly SolidColorBrush ColEquals   = new(Color.FromRgb(0xD4, 0xD4, 0xD4));
-        private static readonly SolidColorBrush ColHex      = new(Color.FromRgb(0xB5, 0xCE, 0xA8));
+        /// <summary>Function / address hex (0x…) — green for visibility when editing [functions].</summary>
+        private static readonly SolidColorBrush ColAddress  = new(Color.FromRgb(0x4E, 0xC9, 0x4E));
+        private static readonly SolidColorBrush ColHex      = ColAddress;
         private static readonly SolidColorBrush ColString   = new(Color.FromRgb(0xCE, 0x91, 0x78));
         private static readonly SolidColorBrush ColBool     = new(Color.FromRgb(0x56, 0x9C, 0xD6));
         private static readonly SolidColorBrush ColNumber   = new(Color.FromRgb(0xB5, 0xCE, 0xA8));
@@ -750,6 +801,8 @@ namespace ReXGlue_GUI
         // Compiled regexes — avoid recompiling per keystroke
         private static readonly Regex RxHex    = new(@"^(0[xX][0-9a-fA-F]+)(.*)$", RegexOptions.Compiled);
         private static readonly Regex RxHexChk = new(@"^0[xX][0-9a-fA-F]+",        RegexOptions.Compiled);
+        /// <summary>TOML key that is only a hex address, e.g. <c>0x827E9A60</c>.</summary>
+        private static readonly Regex RxPureHexAddressKey = new(@"^0[xX][0-9a-fA-F]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RxNum    = new(@"^-?[0-9]+(\.[0-9]+)?$",      RegexOptions.Compiled);
 
         private static readonly SolidColorBrush StatusSaved   = new(Color.FromRgb(0x4E, 0xC9, 0x4E)); // green
@@ -1106,8 +1159,18 @@ namespace ReXGlue_GUI
             int eq = line.IndexOf('=');
             if (eq > 0)
             {
-                para.Inlines.Add(new Run(line[..eq]) { Foreground = ColKey });
-                para.Inlines.Add(new Run("=")        { Foreground = ColEquals });
+                string keySpan = line[..eq];
+                string trimmedStart = keySpan.TrimStart();
+                int leadLen = keySpan.Length - trimmedStart.Length;
+                string trimmedKey = trimmedStart.TrimEnd();
+                int trailLen = trimmedStart.Length - trimmedKey.Length;
+                if (leadLen > 0)
+                    para.Inlines.Add(new Run(keySpan[..leadLen]) { Foreground = ColDefault });
+                bool isHexAddrKey = trimmedKey.Length > 0 && RxPureHexAddressKey.IsMatch(trimmedKey);
+                para.Inlines.Add(new Run(trimmedKey) { Foreground = isHexAddrKey ? ColAddress : ColKey });
+                if (trailLen > 0)
+                    para.Inlines.Add(new Run(trimmedStart[^trailLen..]) { Foreground = ColDefault });
+                para.Inlines.Add(new Run("=") { Foreground = ColEquals });
                 AddValueRuns(para, line[(eq + 1)..]);
                 return;
             }
@@ -1301,10 +1364,10 @@ namespace ReXGlue_GUI
                 l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
             if (headerIdx < 0)
             {
-                if (tomlLines.Count > 0 && !string.IsNullOrWhiteSpace(tomlLines[^1]))
-                    tomlLines.Add(string.Empty);
-                tomlLines.Add("[functions]");
-                headerIdx = tomlLines.Count - 1;
+                int insertAt = IndexAfterLongjmpLine(tomlLines);
+                tomlLines.Insert(insertAt, string.Empty);
+                tomlLines.Insert(insertAt + 1, "[functions]");
+                headerIdx = insertAt + 1;
             }
 
             var (_, funcEnd) = FindFunctionSection(tomlLines);
@@ -1439,14 +1502,18 @@ namespace ReXGlue_GUI
         private void buttonSaveBackup_Click(object sender, RoutedEventArgs e)
         {
             if (!Require(_currentTomlPath, "No file loaded.", "Nothing to Back Up")) return;
-            string backup = $"{_currentTomlPath}.bak_{DateTime.Now:yyyyMMdd_HHmmss}";
+            string dir = Path.GetDirectoryName(_currentTomlPath) ?? ".";
+            string baseName = Path.GetFileNameWithoutExtension(_currentTomlPath);
+            // Use real .bak extension so "Load backup" filter *.bak finds these (old style was .toml.bak_date which did not match *.bak)
+            string backup = Path.Combine(dir, $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}.bak");
             try   { File.WriteAllText(backup, GetEditorText()); AppendOutput($"[Backup Saved] {backup}"); }
             catch (Exception ex) { MessageBox.Show($"Backup failed:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
         private void buttonLoadBackup_Click(object sender, RoutedEventArgs e)
         {
-            string? s = BrowseForFile("Load backup TOML", "TOML backup (*.bak;*.toml)|*.bak;*.toml|All files|*.*");
+            string? s = BrowseForFile("Load backup TOML",
+                "Backup (*.bak)|*.bak|Legacy timestamp (*bak_*)|*bak_*|TOML (*.toml)|*.toml|All files|*.*");
             if (s != null) LoadTomlFile(s);
         }
 
@@ -1532,7 +1599,7 @@ namespace ReXGlue_GUI
             buttonSave_Click(this, new RoutedEventArgs());
             string msg = $"[Code Gen] Injected {ins} unresolved address(es) into [functions].";
             if (skipped > 0) msg += $" ({skipped} already present.)";
-            AppendOutput(msg, OutWarn);
+            AppendOutput(msg, OutOk);
         }
 
         // ── TEMPLATE CHIPS ────────────────────────────────────────────────
@@ -1668,19 +1735,21 @@ namespace ReXGlue_GUI
             { MessageBox.Show("No addresses found.", "Address Parser", MessageBoxButton.OK, MessageBoxImage.Information); return; }
 
             // ── Inject into TOML (shared helper handles dedup + section creation) ──
-            var tomlLines         = NormalizedLines(GetEditorText());
-            var (ins, skipped)    = InjectAddressesIntoFunctions(tomlLines, parsed);
-
-            // Rebuild existing set for the result renderer (after injection)
-            var (funcStart2, funcEnd2) = FindFunctionSection(tomlLines);
-            var existingAfter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = funcStart2 + 1; i < funcEnd2; i++)
+            var tomlLines = NormalizedLines(GetEditorText());
+            var (funcStart0, funcEnd0) = FindFunctionSection(tomlLines);
+            var existingBefore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (funcStart0 >= 0)
             {
-                string s = tomlLines[i].Trim();
-                if (!s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) continue;
-                int eq = s.IndexOf('=');
-                existingAfter.Add(eq >= 0 ? s[..eq].Trim() : s);
+                for (int i = funcStart0 + 1; i < funcEnd0; i++)
+                {
+                    string s = tomlLines[i].Trim();
+                    if (!s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) continue;
+                    int eq = s.IndexOf('=');
+                    existingBefore.Add(eq >= 0 ? s[..eq].Trim() : s);
+                }
             }
+
+            var (ins, skipped) = InjectAddressesIntoFunctions(tomlLines, parsed);
 
             if (ins > 0)
             {
@@ -1702,14 +1771,14 @@ namespace ReXGlue_GUI
                 AppendOutput($"[Address Parser] All {parsed.Count} address(es) already exist in [functions] — nothing added.", OutWarn);
             }
 
-            // ── Render colored results ────────────────────────────────────
+            // ── Render colored results (green = newly added this run, yellow = already in [functions]) ──
             foreach (string addr in parsed)
             {
-                bool isDupe = !existingAfter.Contains(addr) && skipped > 0;
+                bool isDupe = existingBefore.Contains(addr);
                 var para = new Paragraph { Margin = ZeroMargin, FontFamily = MonoFont, FontSize = 12 };
-                para.Inlines.Add(new Run(addr + " ")    { Foreground = isDupe ? OutWarn : OutInfo });
-                para.Inlines.Add(new Run("= ")          { Foreground = OutDefault });
-                para.Inlines.Add(new Run("{}")          { Foreground = isDupe ? OutWarn : ColBrace });
+                para.Inlines.Add(new Run(addr + " ") { Foreground = isDupe ? OutWarn : OutOk });
+                para.Inlines.Add(new Run("= ") { Foreground = OutDefault });
+                para.Inlines.Add(new Run("{}") { Foreground = isDupe ? OutWarn : ColBrace });
                 if (isDupe)
                     para.Inlines.Add(new Run("  // duplicate") { Foreground = OutDim });
                 textBoxAddressResult.Document.Blocks.Add(para);
@@ -2079,10 +2148,10 @@ namespace ReXGlue_GUI
                 l.Trim().Equals("[functions]", StringComparison.OrdinalIgnoreCase));
             if (headerIdx < 0)
             {
-                if (tomlLines.Count > 0 && !string.IsNullOrWhiteSpace(tomlLines[^1]))
-                    tomlLines.Add(string.Empty);
-                tomlLines.Add("[functions]");
-                headerIdx = tomlLines.Count - 1;
+                int insertAt = IndexAfterLongjmpLine(tomlLines);
+                tomlLines.Insert(insertAt, string.Empty);
+                tomlLines.Insert(insertAt + 1, "[functions]");
+                headerIdx = insertAt + 1;
             }
 
             // Inject each candidate with its index comment
