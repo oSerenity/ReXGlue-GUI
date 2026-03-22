@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
 using Microsoft.VisualStudio.Shell;
+using ReXGlue.Debugger;
 
 namespace ReXGlue_REVS
 {
@@ -21,7 +21,8 @@ namespace ReXGlue_REVS
         private string _lastSnapshot = "";
         private int _inFlight = 0;
 
-        private static readonly Regex RxVsScalar = new Regex(@"^(0x[0-9a-fA-F]+|\d+)$", RegexOptions.Compiled);
+        private static readonly Regex RxExtractHex = new Regex(@"0[xX][0-9a-fA-F]+", RegexOptions.Compiled);
+        private static readonly Regex RxExtractDec = new Regex(@"\b\d+\b", RegexOptions.Compiled);
 
         public AutoCycleController(AsyncPackage package) { _package = package; }
 
@@ -73,13 +74,21 @@ namespace ReXGlue_REVS
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 if (!_enabled || _dte == null) return;
-                DebuggerWatchHelper.EnsureCtxCtrU32InWatch1(_dte, msg => ThreadHelper.JoinableTaskFactory.RunAsync(async () => await Commands.WriteOutputAsync(msg)));
-                var entries = EvaluateCtxCtr(_dte, DebuggerWatchHelper.CtxCtrU32);
+                if (!DbgBreakReasonHelper.ShouldRunAutoCycleOnBreakReason(Reason))
+                {
+                    if (DbgBreakReasonHelper.ShouldLogAutoCycleFilteredReason(Reason))
+                        await Commands.WriteOutputAsync(
+                            "[ReXGlue] Auto: skipped (pause reason: " + DbgBreakReasonHelper.Format(Reason) + ").");
+                    return;
+                }
+                // Same path as manual Fetch: watch + evaluate + single nonzero lane.
+                var entries = ReXGlueFetchInjection.PrepareCtxCtrAtBreakpoint(_dte);
                 if (entries == null || entries.Count == 0) return;
-                string snapshot = string.Join(",", entries.Select(e => e.Item1 + ":" + e.Item2.ToString("X8")));
+                var e0 = entries[0];
+                string snapshot = e0.Item1 + ":" + e0.Item2.ToString("X8");
                 if (snapshot == _lastSnapshot) return;
                 _lastSnapshot = snapshot;
-                await Commands.WriteOutputAsync( "[ReXGlue] Break: got " + entries.Count + " value(s) from ctx.ctr.u32.");
+                await Commands.WriteOutputAsync("[ReXGlue] Break: ctx.ctr.u32 lane=" + e0.Item1 + " value=0x" + e0.Item2.ToString("X8"));
                 await RunCycleAsync(entries);
             });
         }
@@ -96,22 +105,16 @@ namespace ReXGlue_REVS
                     await Commands.WriteOutputAsync( "[ReXGlue] TOML path not set or file missing. Run: ReXGlue: Set TOML Path (Solution)");
                     return;
                 }
-                var candidates = entries.Where(e => e.Item2 != 0).ToList();
-                if (candidates.Count == 0)
+                // Match Fetch: persist tool window edits before reading/injecting TOML from disk.
+                await Commands.FlushToolWindowTomlToDiskIfAvailableAsync();
+                if (!ReXGlueFetchInjection.TryInject(tomlPath, entries, out int injected, out int skipped, out var newlyInserted))
                 {
-                    await Commands.WriteOutputAsync( "[ReXGlue] ctx values are all zero — nothing to inject.");
+                    await Commands.WriteOutputAsync("[ReXGlue] Auto: inject skipped (no nonzero ctx.ctr.u32 or TOML error).");
                     return;
                 }
-                string text = File.ReadAllText(tomlPath);
-                List<string> lines = TomlFunctions.NormalizedLines(text);
-                var addrList = candidates.Select(c => "0x" + c.Item2.ToString("X8")).ToList();
-                var commentMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var c in candidates)
-                    commentMap["0x" + c.Item2.ToString("X8")] = "# ctx.ctr.u32[" + c.Item1 + "]";
-                Func<string, string> commentFn = a => commentMap.TryGetValue(a, out string c) ? c : null;
-                var inj = TomlFunctions.InjectAddresses(lines, addrList, commentFn);
-                File.WriteAllText(tomlPath, string.Join("\n", lines));
-                await Commands.WriteOutputAsync( "[ReXGlue] Injected " + inj.Item1 + " address(es) into [functions]." + (inj.Item2 > 0 ? " (" + inj.Item2 + " already present.)" : ""));
+                if (newlyInserted != null && newlyInserted.Count > 0)
+                    Commands.NotifyInjectedAddressesForHighlight(newlyInserted);
+                await Commands.WriteOutputAsync("[ReXGlue] Injected " + injected + " address(es) into [functions]." + (skipped > 0 ? " (" + skipped + " already present.)" : ""));
 
                 // Stop debugging before codegen (releases file locks; matches usage: stop → codegen → repeat)
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
@@ -125,7 +128,8 @@ namespace ReXGlue_REVS
                 {
                     await Commands.WriteOutputAsync( "[ReXGlue] Stop debug: " + stopEx.Message);
                 }
-                await Commands.WaitForDebuggerDesignModeAsync(_dte);
+                bool stoppedOk = await Commands.WaitForDebuggerDesignModeAsync(_dte);
+                if (!stoppedOk) return;
                 await Commands.WriteOutputAsync( "[ReXGlue] Running codegen…");
 
                 int exit = await RexglueRunner.RunCodegenAsync(_package, tomlPath, Commands.CurrentCodegenOptions).ConfigureAwait(false);
@@ -161,12 +165,6 @@ namespace ReXGlue_REVS
         {
             var result = new List<Tuple<int, uint>>();
             string t = raw.Trim();
-            if (RxVsScalar.IsMatch(t))
-            {
-                uint v;
-                if (TryParseU32(t, out v)) result.Add(Tuple.Create(0, v));
-                return result;
-            }
             if (t.IndexOf('{') >= 0)
             {
                 string inner = t.Trim().TrimStart('{').TrimEnd('}');
@@ -178,6 +176,13 @@ namespace ReXGlue_REVS
                     idx++;
                 }
                 if (result.Count > 0) return result;
+            }
+            // Scalar-ish (with potential suffixes like "0x...u32" or "0x... (dec=...)")
+            uint scalar;
+            if (TryParseU32(t, out scalar))
+            {
+                result.Add(Tuple.Create(0, scalar));
+                return result;
             }
             for (int i = 0; i < 64; i++)
             {
@@ -195,9 +200,23 @@ namespace ReXGlue_REVS
 
         private static bool TryParseU32(string s, out uint value)
         {
-            if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                return uint.TryParse(s.Substring(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
-            return uint.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+            value = 0;
+            if (string.IsNullOrWhiteSpace(s)) return false;
+
+            var hm = RxExtractHex.Match(s);
+            if (hm.Success)
+            {
+                string hex = hm.Value.Substring(2);
+                return uint.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
+            }
+
+            var dm = RxExtractDec.Match(s);
+            if (dm.Success)
+            {
+                return uint.TryParse(dm.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+            }
+
+            return false;
         }
     }
 }

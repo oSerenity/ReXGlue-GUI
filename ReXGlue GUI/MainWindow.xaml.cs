@@ -16,6 +16,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using EnvDTE;
 using EnvDTE80;
+using ReXGlue.Debugger;
 using Path = System.IO.Path;
 using Process = System.Diagnostics.Process;
 using TextRange = System.Windows.Documents.TextRange;
@@ -1952,6 +1953,13 @@ namespace ReXGlue_GUI
         private void OnVsEnterBreakMode(dbgEventReason Reason, ref dbgExecutionAction ExecutionAction)
         {
             if (!_vsPollingActive) return;
+            if (!DbgBreakReasonHelper.IsBreakpointHit(Reason))
+            {
+                if (DbgBreakReasonHelper.ShouldLogSkippedAuto(Reason))
+                    Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+                        AppendOutput("[VS Debugger] Auto-detect skipped (not a breakpoint; reason: " + DbgBreakReasonHelper.Format(Reason) + ").", OutWarn));
+                return;
+            }
             // Prevent re-entrancy if VS fires multiple break events quickly.
             if (System.Threading.Interlocked.Exchange(ref _vsAutoFetchInFlight, 1) == 1) return;
 

@@ -49,6 +49,9 @@
     <Compile Include="ReXGlue_REVSPackage.cs" />
     <Compile Include="Commands.cs" />
     <Compile Include="AutoCycleController.cs" />
+    <Compile Include="..\..\..\ReXGlue\DbgBreakReasonHelper.cs">
+      <Link>DbgBreakReasonHelper.cs</Link>
+    </Compile>
     <Compile Include="SolutionTomlPathStore.cs" />
     <Compile Include="RexglueRunner.cs" />
     <Compile Include="DebuggerWatchHelper.cs" />

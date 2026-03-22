@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.IO;
 using System.Linq;
@@ -38,6 +39,33 @@ namespace ReXGlue_REVS
         internal static event Action ToolUiRefreshRequested;
 
         internal static void NotifyToolUiRefresh() => ToolUiRefreshRequested?.Invoke();
+
+        /// <summary>ReXGlue tool window subscribes to mark newly injected [functions] addresses green in the editor.</summary>
+        internal static Action<IReadOnlyList<string>> OnInjectedAddressesForEditorHighlight;
+
+        internal static void NotifyInjectedAddressesForHighlight(IReadOnlyList<string> addresses)
+        {
+            if (addresses == null || addresses.Count == 0) return;
+            try { OnInjectedAddressesForEditorHighlight?.Invoke(addresses); }
+            catch { }
+        }
+
+        /// <summary>Registered by the tool window so Auto/Fetch can persist in-memory TOML edits before touching disk.</summary>
+        internal static Func<string> TryGetToolWindowTomlText;
+
+        /// <summary>Writes the tool window editor content to the solution TOML path when the window is loaded (same as Fetch after Save).</summary>
+        internal static async Task FlushToolWindowTomlToDiskIfAvailableAsync()
+        {
+            if (_package == null) return;
+            var getter = TryGetToolWindowTomlText;
+            if (getter == null) return;
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            string text;
+            try { text = getter(); }
+            catch { return; }
+            if (text == null) return;
+            await SaveTomlContentAsync(text);
+        }
 
         public static async Task InitializeAsync(AsyncPackage package)
         {
@@ -167,6 +195,7 @@ namespace ReXGlue_REVS
                 await WriteOutputAsync("[ReXGlue] No TOML configured for this solution. Run Set TOML Path first.");
                 return;
             }
+            await FlushToolWindowTomlToDiskIfAvailableAsync();
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
             var dte = await _package.GetServiceAsync(typeof(DTE)) as DTE2;
             bool didFetch = false;
@@ -193,11 +222,15 @@ namespace ReXGlue_REVS
             if (dte?.Debugger == null || dte.Debugger.CurrentMode != dbgDebugMode.dbgBreakMode)
                 return false;
 
+            await FlushToolWindowTomlToDiskIfAvailableAsync();
+
             // 1) Grab ctx.ctr.u32 at breakpoint and inject into on-disk TOML
             var entries = ReXGlueFetchInjection.PrepareCtxCtrAtBreakpoint(dte);
             if (entries != null && entries.Count > 0 && File.Exists(tomlPath) &&
-                ReXGlueFetchInjection.TryInject(tomlPath, entries, out int injected, out int skipped))
+                ReXGlueFetchInjection.TryInject(tomlPath, entries, out int injected, out int skipped, out var newlyInserted))
             {
+                if (newlyInserted != null && newlyInserted.Count > 0)
+                    NotifyInjectedAddressesForHighlight(newlyInserted);
                 await WriteOutputAsync("[ReXGlue] Fetched " + entries.Count + " value(s) from ctx.ctr.u32; injected " + injected +
                     " address(es) into [functions]." + (skipped > 0 ? " (" + skipped + " already present.)" : ""));
             }
@@ -209,8 +242,8 @@ namespace ReXGlue_REVS
                 if (dte.Debugger.CurrentMode != dbgDebugMode.dbgDesignMode)
                 {
                     dte.Debugger.Stop(true);
-                    await WaitForDebuggerDesignModeAsync(dte);
-                    return true;
+                    bool stoppedOk = await WaitForDebuggerDesignModeAsync(dte);
+                    return stoppedOk;
                 }
             }
             catch (Exception ex)
@@ -232,7 +265,9 @@ namespace ReXGlue_REVS
                 if (dte.Debugger.CurrentMode != dbgDebugMode.dbgDesignMode)
                 {
                     dte.Debugger.Stop(true);
-                    await WaitForDebuggerDesignModeAsync(dte);
+                    bool stoppedOk = await WaitForDebuggerDesignModeAsync(dte);
+                    if (!stoppedOk)
+                        await WriteOutputAsync("[ReXGlue] Warning: debugger did not reach design mode; continuing.");
                 }
             }
             catch (Exception ex)
@@ -245,15 +280,15 @@ namespace ReXGlue_REVS
         /// After <see cref="Debugger.Stop"/>, polls until <see cref="Debugger.CurrentMode"/> is design mode
         /// so rexglue codegen runs with the debug session fully torn down and file locks released.
         /// </summary>
-        internal static async Task WaitForDebuggerDesignModeAsync(DTE2 dte, int maxWaitMs = 20000)
+        internal static async Task<bool> WaitForDebuggerDesignModeAsync(DTE2 dte, int maxWaitMs = 20000)
         {
-            if (dte?.Debugger == null) return;
+            if (dte?.Debugger == null) return false;
 
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
             if (dte.Debugger.CurrentMode == dbgDebugMode.dbgDesignMode)
             {
                 await WriteOutputAsync("[ReXGlue] Debugger stopped — verified (design mode).");
-                return;
+                return true;
             }
 
             await WriteOutputAsync("[ReXGlue] Waiting for debugger to fully stop…");
@@ -266,13 +301,16 @@ namespace ReXGlue_REVS
                 if (dte.Debugger == null || dte.Debugger.CurrentMode == dbgDebugMode.dbgDesignMode)
                 {
                     await WriteOutputAsync("[ReXGlue] Debugger stopped — verified (design mode).");
-                    return;
+                    return true;
                 }
                 waited += stepMs;
             }
 
+            string mode = "(unknown)";
+            try { mode = dte.Debugger != null ? dte.Debugger.CurrentMode.ToString() : "(null)"; } catch { }
             await WriteOutputAsync("[ReXGlue] Warning: debugger did not reach design mode within " + (maxWaitMs / 1000) +
-                "s; continuing to codegen.");
+                "s; last mode=" + mode);
+            return false;
         }
 
         private static async Task BuildSolutionAndRestartDebuggerAsync(DTE2 dte)
@@ -317,6 +355,16 @@ namespace ReXGlue_REVS
             }
         }
 
+        /// <summary>True when a debug session is active (running or at a breakpoint), not design mode.</summary>
+        internal static async Task<bool> IsDebuggerRunningAsync()
+        {
+            if (_package == null) return false;
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            var dte = await _package.GetServiceAsync(typeof(DTE)) as DTE2;
+            if (dte?.Debugger == null) return false;
+            return dte.Debugger.CurrentMode != dbgDebugMode.dbgDesignMode;
+        }
+
         internal static async Task<int> CountCMakeListsInSolutionAsync()
         {
             if (_package == null) return 0;
@@ -327,6 +375,40 @@ namespace ReXGlue_REVS
             if (string.IsNullOrWhiteSpace(full)) return 0;
             string dir = Path.GetDirectoryName(full);
             return CMakeWorkspaceHelper.CountCMakeListsExcludingBuildDirs(dir);
+        }
+
+        /// <summary>
+        /// Show "multiple CMake roots" only when the workspace has several CMake trees <em>and</em>
+        /// the saved TOML path is <strong>not</strong> under the current solution directory (user did not
+        /// open the folder that contains their game project / TOML).
+        /// </summary>
+        internal static async Task<bool> ShouldWarnMultipleCMakeRootsAsync()
+        {
+            int n = await CountCMakeListsInSolutionAsync();
+            if (n <= 1) return false;
+            if (_package == null) return false;
+            string tomlPath = await SolutionTomlPathStore.LoadAsync(_package);
+            if (string.IsNullOrWhiteSpace(tomlPath) || !File.Exists(tomlPath)) return false;
+            string tomlDir = Path.GetDirectoryName(tomlPath);
+            if (string.IsNullOrWhiteSpace(tomlDir)) return false;
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            var dte = await _package.GetServiceAsync(typeof(DTE)) as DTE2;
+            if (dte?.Solution == null) return false;
+            string full = dte.Solution.FullName;
+            if (string.IsNullOrWhiteSpace(full)) return false;
+            string solutionDir = Path.GetDirectoryName(full);
+            if (string.IsNullOrWhiteSpace(solutionDir)) return false;
+            try
+            {
+                solutionDir = Path.GetFullPath(solutionDir);
+            }
+            catch
+            {
+                return false;
+            }
+            // TOML lives inside the opened workspace → user has the right tree; do not nag.
+            if (CMakeWorkspaceHelper.IsDescendantOrSameDirectory(tomlDir, solutionDir)) return false;
+            return true;
         }
 
         private static async Task PostMigrateRefreshCMakeAsync(string appRoot)

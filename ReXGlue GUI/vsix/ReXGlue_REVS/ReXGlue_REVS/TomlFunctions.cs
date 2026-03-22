@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace ReXGlue_REVS
 {
@@ -61,7 +62,8 @@ namespace ReXGlue_REVS
             return lines.Count;
         }
 
-        public static Tuple<int, int> InjectAddresses(
+        /// <returns>Item1 = inserted count, Item2 = skipped (already present), Item3 = addresses actually inserted.</returns>
+        public static Tuple<int, int, List<string>> InjectAddresses(
             List<string> tomlLines,
             IEnumerable<string> addresses,
             Func<string, string> commentForAddress = null)
@@ -87,6 +89,7 @@ namespace ReXGlue_REVS
             }
 
             int inserted = 0, skipped = 0, nextInsertIdx = headerIdx + 1;
+            var insertedAddrs = new List<string>();
             foreach (string addr in addresses)
             {
                 if (existing.Add(addr))
@@ -94,11 +97,28 @@ namespace ReXGlue_REVS
                     string c = commentForAddress != null ? commentForAddress(addr) : null;
                     string entry = c != null ? addr + " = {}  " + c : addr + " = {}";
                     tomlLines.Insert(nextInsertIdx++, entry);
+                    insertedAddrs.Add(addr);
                     inserted++;
                 }
                 else skipped++;
             }
-            return Tuple.Create(inserted, skipped);
+            return Tuple.Create(inserted, skipped, insertedAddrs);
+        }
+
+        private static readonly Regex RxCtxCtrEndComment = new Regex(@"\s+#\s*ctx\.ctr\.u32\s*\[\s*\d+\s*\]\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>Remove trailing <c># ctx.ctr.u32[n]</c> comments (Fetch/Auto inject markers) from every line.</summary>
+        public static Tuple<List<string>, int> RemoveCtxCtrInjectComments(List<string> lines)
+        {
+            var result = new List<string>(lines.Count);
+            int removed = 0;
+            foreach (string line in lines)
+            {
+                string next = RxCtxCtrEndComment.Replace(line, "");
+                if (!string.Equals(next, line, StringComparison.Ordinal)) removed++;
+                result.Add(next);
+            }
+            return Tuple.Create(result, removed);
         }
 
         public static Tuple<List<string>, int> RemoveDuplicateFunctionAddresses(List<string> lines)

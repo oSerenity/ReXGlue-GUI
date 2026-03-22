@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -14,7 +15,10 @@ namespace ReXGlue_REVS
         private bool _updatingEditor;
         private bool _highlightPending;
         private bool _promptedForDebugAfterCodegen;
+        /// <summary>Function addresses (normalized 0x…) just injected in this session; shown green in [functions].</summary>
+        private readonly HashSet<string> _newlyHighlightedAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private static readonly Regex RxClipAddr = new Regex(@"(0x8[0-9a-fA-F]{7})\b", RegexOptions.Compiled);
+        private static readonly Regex RxFunctionAddrLine = new Regex(@"^(\s*)(0[xX][0-9a-fA-F]+)(\s*)(=)(.*)$", RegexOptions.Compiled);
 
         // TOML editor colors (match desktop GUI / VS Code Dark+)
         private static readonly SolidColorBrush ColDefault = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4));
@@ -23,6 +27,8 @@ namespace ReXGlue_REVS
         private static readonly SolidColorBrush ColKey = new SolidColorBrush(Color.FromRgb(0x9C, 0xDC, 0xFE));
         private static readonly SolidColorBrush ColEquals = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4));
         private static readonly SolidColorBrush ColHex = new SolidColorBrush(Color.FromRgb(0xB5, 0xCE, 0xA8));
+        /// <summary>Newly injected [functions] address keys (same green as success output).</summary>
+        private static readonly SolidColorBrush ColNewAddr = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0x4E));
         private static readonly SolidColorBrush ColString = new SolidColorBrush(Color.FromRgb(0xCE, 0x91, 0x78));
         private static readonly SolidColorBrush ColBool = new SolidColorBrush(Color.FromRgb(0x56, 0x9C, 0xD6));
         private static readonly SolidColorBrush ColNumber = new SolidColorBrush(Color.FromRgb(0xB5, 0xCE, 0xA8));
@@ -75,11 +81,12 @@ namespace ReXGlue_REVS
                     var para = new Paragraph(new Run(lines[i])) { Margin = ZeroMargin };
                     richTextBoxToml.Document.Blocks.Add(para);
                 }
-                HighlightDocument();
-                if (caretOffset.HasValue)
-                    SetCaretOffset(Math.Min(caretOffset.Value, GetTomlEditorText().Length));
+                // Do not call HighlightDocument() here: it returns immediately while _updatingEditor is true.
             }
             finally { _updatingEditor = false; }
+            HighlightDocument();
+            if (caretOffset.HasValue)
+                SetCaretOffset(Math.Min(caretOffset.Value, GetTomlEditorText().Length));
         }
 
         private int GetCaretOffset()
@@ -130,24 +137,54 @@ namespace ReXGlue_REVS
             _updatingEditor = true;
             try
             {
+                string currentSection = "";
                 foreach (var block in richTextBoxToml.Document.Blocks.ToList())
                 {
                     if (!(block is Paragraph para)) continue;
                     string line = new TextRange(para.ContentStart, para.ContentEnd).Text;
+                    string tsec = (line ?? "").Trim();
+                    if (tsec.Length >= 2 && tsec[0] == '[' && tsec[tsec.Length - 1] == ']' && !tsec.StartsWith("#", StringComparison.Ordinal))
+                        currentSection = tsec;
                     para.Inlines.Clear();
-                    HighlightLine(para, line);
+                    HighlightLine(para, line, currentSection);
                 }
             }
             finally { _updatingEditor = false; }
         }
 
-        private static void HighlightLine(Paragraph para, string line)
+        private void HighlightLine(Paragraph para, string line, string currentSection)
         {
             if (line == null) line = "";
             if (line.Length == 0) { para.Inlines.Add(new Run("") { Foreground = ColDefault }); return; }
             string trimmed = line.TrimStart();
             if (trimmed.StartsWith("#")) { para.Inlines.Add(new Run(line) { Foreground = ColComment }); return; }
-            if (trimmed.StartsWith("[")) { para.Inlines.Add(new Run(line) { Foreground = ColSection }); return; }
+            if (trimmed.StartsWith("["))
+            {
+                int secHash = FindTomlLineCommentStart(line);
+                if (secHash >= 0)
+                {
+                    if (secHash > 0) para.Inlines.Add(new Run(line.Substring(0, secHash)) { Foreground = ColSection });
+                    para.Inlines.Add(new Run(line.Substring(secHash)) { Foreground = ColComment });
+                    return;
+                }
+                para.Inlines.Add(new Run(line) { Foreground = ColSection });
+                return;
+            }
+            bool inFunctions = string.Equals(currentSection, "[functions]", StringComparison.OrdinalIgnoreCase);
+            if (inFunctions)
+            {
+                var fm = RxFunctionAddrLine.Match(line);
+                if (fm.Success)
+                {
+                    string norm = NormalizeAddrForHighlight(fm.Groups[2].Value);
+                    var keyBrush = !string.IsNullOrEmpty(norm) && _newlyHighlightedAddresses.Contains(norm) ? ColNewAddr : ColHex;
+                    if (fm.Groups[1].Length > 0) para.Inlines.Add(new Run(fm.Groups[1].Value) { Foreground = ColDefault });
+                    para.Inlines.Add(new Run(fm.Groups[2].Value) { Foreground = keyBrush });
+                    para.Inlines.Add(new Run(fm.Groups[3].Value + fm.Groups[4].Value) { Foreground = ColEquals });
+                    AddValueRuns(para, fm.Groups[5].Value);
+                    return;
+                }
+            }
             int eq = line.IndexOf('=');
             if (eq > 0)
             {
@@ -156,12 +193,77 @@ namespace ReXGlue_REVS
                 AddValueRuns(para, line.Substring(eq + 1));
                 return;
             }
+            int hc = FindTomlLineCommentStart(line);
+            if (hc >= 0)
+            {
+                if (hc > 0) para.Inlines.Add(new Run(line.Substring(0, hc)) { Foreground = ColDefault });
+                para.Inlines.Add(new Run(line.Substring(hc)) { Foreground = ColComment });
+                return;
+            }
             para.Inlines.Add(new Run(line) { Foreground = ColDefault });
+        }
+
+        /// <summary># starts a comment when not inside a double-quoted string; must be first char or preceded by whitespace.</summary>
+        private static bool IsUnescapedDoubleQuote(string s, int i)
+        {
+            if (i < 0 || i >= s.Length || s[i] != '"') return false;
+            int bs = 0;
+            for (int j = i - 1; j >= 0 && s[j] == '\\'; j--)
+                bs++;
+            return (bs % 2) == 0;
+        }
+
+        private static int FindTomlLineCommentStart(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return -1;
+            bool inString = false;
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (IsUnescapedDoubleQuote(s, i))
+                {
+                    inString = !inString;
+                    continue;
+                }
+                if (inString) continue;
+                if (s[i] == '#' && (i == 0 || char.IsWhiteSpace(s[i - 1])))
+                    return i;
+            }
+            return -1;
+        }
+
+        private static void AppendTrailingWhitespaceAndComment(Paragraph para, string trailing)
+        {
+            if (string.IsNullOrEmpty(trailing)) return;
+            int hc = FindTomlLineCommentStart(trailing);
+            if (hc >= 0)
+            {
+                if (hc > 0) para.Inlines.Add(new Run(trailing.Substring(0, hc)) { Foreground = ColDefault });
+                para.Inlines.Add(new Run(trailing.Substring(hc)) { Foreground = ColComment });
+            }
+            else
+                para.Inlines.Add(new Run(trailing) { Foreground = ColDefault });
+        }
+
+        private static void AppendValueCommentSuffix(Paragraph para, string commentSuffix)
+        {
+            if (!string.IsNullOrEmpty(commentSuffix))
+                para.Inlines.Add(new Run(commentSuffix) { Foreground = ColComment });
         }
 
         private static void AddValueRuns(Paragraph para, string value)
         {
-            if (value == null) value = "";
+            string commentSuffix = "";
+            if (!string.IsNullOrEmpty(value))
+            {
+                int cmt = FindTomlLineCommentStart(value);
+                if (cmt >= 0)
+                {
+                    commentSuffix = value.Substring(cmt);
+                    value = value.Substring(0, cmt);
+                }
+            }
+            else value = "";
+
             int bo = value.IndexOf('{');
             if (bo >= 0)
             {
@@ -182,7 +284,8 @@ namespace ReXGlue_REVS
                     if (i < parts.Length - 1) para.Inlines.Add(new Run(",") { Foreground = ColBrace });
                 }
                 para.Inlines.Add(new Run("}") { Foreground = ColBrace });
-                if (trailing.Length > 0) para.Inlines.Add(new Run(trailing) { Foreground = ColDefault });
+                AppendTrailingWhitespaceAndComment(para, trailing);
+                AppendValueCommentSuffix(para, commentSuffix);
                 return;
             }
             string v = value.TrimStart();
@@ -193,12 +296,43 @@ namespace ReXGlue_REVS
                 var m = RxHex.Match(v);
                 para.Inlines.Add(new Run(m.Groups[1].Value) { Foreground = ColHex });
                 if (m.Groups[2].Length > 0) para.Inlines.Add(new Run(m.Groups[2].Value) { Foreground = ColDefault });
+                AppendValueCommentSuffix(para, commentSuffix);
                 return;
             }
-            if (v.StartsWith("\"")) { para.Inlines.Add(new Run(v) { Foreground = ColString }); return; }
-            if (v == "true" || v == "false") { para.Inlines.Add(new Run(v) { Foreground = ColBool }); return; }
-            if (RxNum.IsMatch(v)) { para.Inlines.Add(new Run(v) { Foreground = ColNumber }); return; }
+            if (v.StartsWith("\"")) { para.Inlines.Add(new Run(v) { Foreground = ColString }); AppendValueCommentSuffix(para, commentSuffix); return; }
+            if (v == "true" || v == "false") { para.Inlines.Add(new Run(v) { Foreground = ColBool }); AppendValueCommentSuffix(para, commentSuffix); return; }
+            if (RxNum.IsMatch(v)) { para.Inlines.Add(new Run(v) { Foreground = ColNumber }); AppendValueCommentSuffix(para, commentSuffix); return; }
             para.Inlines.Add(new Run(v) { Foreground = ColDefault });
+            AppendValueCommentSuffix(para, commentSuffix);
+        }
+
+        private static string NormalizeAddrForHighlight(string addr)
+        {
+            if (string.IsNullOrWhiteSpace(addr)) return null;
+            addr = addr.Trim();
+            var m = Regex.Match(addr, @"^0[xX]([0-9a-fA-F]+)$");
+            if (!m.Success) return null;
+            return "0x" + m.Groups[1].Value.ToLowerInvariant();
+        }
+
+        private void RegisterNewAddressesForHighlight(IEnumerable<string> addrs)
+        {
+            if (addrs == null) return;
+            foreach (string a in addrs)
+            {
+                string n = NormalizeAddrForHighlight(a);
+                if (!string.IsNullOrEmpty(n)) _newlyHighlightedAddresses.Add(n);
+            }
+        }
+
+        private void OnInjectedAddressesForEditorHighlight(IReadOnlyList<string> list)
+        {
+            void apply()
+            {
+                RegisterNewAddressesForHighlight(list);
+            }
+            if (Dispatcher.CheckAccess()) apply();
+            else Dispatcher.BeginInvoke(new Action(apply));
         }
 
         public ReXGlueControl()
@@ -256,6 +390,8 @@ namespace ReXGlue_REVS
         {
             Commands.ToolUiRefreshRequested -= OnToolUiRefreshRequested;
             Commands.WriteToToolOutput = null;
+            Commands.TryGetToolWindowTomlText = null;
+            Commands.OnInjectedAddressesForEditorHighlight = null;
         }
 
         // Output colors (match desktop GUI)
@@ -311,11 +447,11 @@ namespace ReXGlue_REVS
                             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                             try
                             {
-                                int n = await Commands.CountCMakeListsInSolutionAsync();
-                                if (n > 1)
+                                if (await Commands.ShouldWarnMultipleCMakeRootsAsync())
                                 {
                                     MessageBox.Show(
-                                        "This workspace contains multiple CMakeLists.txt trees.\n\n" +
+                                        "This workspace contains multiple CMakeLists.txt trees, and your\n" +
+                                        "saved TOML path is outside the current solution folder.\n\n" +
                                         "For the most reliable workflow, close this solution and use\n" +
                                         "File → Open → Folder on your game project directory\n" +
                                         "(the folder that contains your app CMakeLists.txt and TOML).",
@@ -325,6 +461,11 @@ namespace ReXGlue_REVS
                                 }
                             }
                             catch { }
+                            if (await Commands.IsDebuggerRunningAsync())
+                            {
+                                Commands.NotifyToolUiRefresh();
+                                return;
+                            }
                             var result = MessageBox.Show(
                                 "Code generation completed successfully.\n\nReady to start debugging? (Auto Cycle will be turned on if it's off.)",
                                 "ReXGlue",
@@ -358,6 +499,7 @@ namespace ReXGlue_REVS
             var res = TomlFunctions.InjectAddresses(lines, addresses, null);
             if (res.Item1 > 0)
             {
+                RegisterNewAddressesForHighlight(res.Item3);
                 _updatingEditor = true;
                 try { SetTomlEditorText(string.Join("\n", lines)); } finally { _updatingEditor = false; }
                 ThreadHelper.JoinableTaskFactory.RunAsync(async () => await Commands.WriteOutputAsync("[ReXGlue] Auto-parsed " + res.Item1 + " address(es) from output and added to [functions]." + (res.Item2 > 0 ? " (" + res.Item2 + " already present.)" : "")));
@@ -369,6 +511,8 @@ namespace ReXGlue_REVS
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             Commands.WriteToToolOutput = AppendToToolOutput;
+            Commands.TryGetToolWindowTomlText = () => GetTomlEditorText();
+            Commands.OnInjectedAddressesForEditorHighlight = OnInjectedAddressesForEditorHighlight;
             Commands.ToolUiRefreshRequested -= OnToolUiRefreshRequested;
             Commands.ToolUiRefreshRequested += OnToolUiRefreshRequested;
             SyncCodegenOptionsUi();
@@ -411,9 +555,11 @@ namespace ReXGlue_REVS
             }
         }
 
-        private async System.Threading.Tasks.Task RefreshAsync(bool reloadEditor = true)
+        private async System.Threading.Tasks.Task RefreshAsync(bool reloadEditor = true, bool resetNewAddressHighlights = true)
         {
             if (Commands.GetPackage() == null) return;
+            if (resetNewAddressHighlights)
+                _newlyHighlightedAddresses.Clear();
             string path = await Commands.GetTomlPathAsync();
             int count = await Commands.GetFunctionsCountAsync();
             bool auto = Commands.GetAutoEnabled();
@@ -427,6 +573,7 @@ namespace ReXGlue_REVS
             buttonSave.IsEnabled = hasPath;
             buttonAddSetjmp.IsEnabled = hasPath;
             buttonRemoveDupes.IsEnabled = hasPath;
+            buttonStripCtxCtr.IsEnabled = hasPath;
             buttonClearValues.IsEnabled = hasPath;
             buttonWriteFunctions.IsEnabled = hasPath;
             buttonAddAddr.IsEnabled = hasPath;
@@ -490,7 +637,7 @@ namespace ReXGlue_REVS
             {
                 bool ok = await Commands.SaveTomlContentAsync(GetTomlEditorText());
                 if (ok)
-                    await RefreshAsync(reloadEditor: false);
+                    await RefreshAsync(reloadEditor: false, resetNewAddressHighlights: false);
             }
             finally { buttonSave.IsEnabled = true; }
         }
@@ -506,7 +653,7 @@ namespace ReXGlue_REVS
                 await Commands.SaveTomlContentAsync(GetTomlEditorText());
                 await Commands.DoFetchOnceAsync();
                 // Reload so the editor matches the file rexglue used (includes fetch-injected addresses)
-                await RefreshAsync(reloadEditor: true);
+                await RefreshAsync(reloadEditor: true, resetNewAddressHighlights: false);
             }
             finally { buttonFetchOnce.IsEnabled = true; }
         }
@@ -529,7 +676,7 @@ namespace ReXGlue_REVS
                 }
                 await Commands.DoFetchOnceAsync();
                 // Reload so the editor matches the on-disk TOML (saved edits + any fetch-injected addresses)
-                await RefreshAsync(reloadEditor: true);
+                await RefreshAsync(reloadEditor: true, resetNewAddressHighlights: false);
             }
             finally { buttonRunCodeGen.IsEnabled = true; }
         }
@@ -594,7 +741,13 @@ namespace ReXGlue_REVS
                 addr = "0x" + addr.TrimStart('0', 'x', 'X');
             var lines = TomlFunctions.NormalizedLines(GetTomlEditorText());
             var res = TomlFunctions.InjectAddresses(lines, new[] { addr }, null);
-            if (res.Item1 > 0) { _updatingEditor = true; try { SetTomlEditorText(string.Join("\n", lines)); } finally { _updatingEditor = false; } await Commands.WriteOutputAsync("[ReXGlue] [Functions] Added " + addr + " = {}"); }
+            if (res.Item1 > 0)
+            {
+                RegisterNewAddressesForHighlight(res.Item3);
+                _updatingEditor = true;
+                try { SetTomlEditorText(string.Join("\n", lines)); } finally { _updatingEditor = false; }
+                await Commands.WriteOutputAsync("[ReXGlue] [Functions] Added " + addr + " = {}");
+            }
             else { await Commands.WriteOutputAsync("[ReXGlue] Address " + addr + " already exists under [functions]."); }
         }
 
@@ -626,6 +779,20 @@ namespace ReXGlue_REVS
             var result = TomlFunctions.RemoveDuplicateFunctionAddresses(lines);
             if (result.Item2 > 0) { _updatingEditor = true; try { SetTomlEditorText(string.Join("\n", result.Item1)); } finally { _updatingEditor = false; } ThreadHelper.JoinableTaskFactory.RunAsync(async () => await Commands.WriteOutputAsync("[ReXGlue] [Remove Dupes] Removed " + result.Item2 + " duplicate(s) from [functions].")); }
             else { ThreadHelper.JoinableTaskFactory.RunAsync(async () => await Commands.WriteOutputAsync("[ReXGlue] [Remove Dupes] No duplicates found in [functions].")); }
+        }
+
+        private void ButtonStripCtxCtr_Click(object sender, RoutedEventArgs e)
+        {
+            var lines = TomlFunctions.NormalizedLines(GetTomlEditorText());
+            var result = TomlFunctions.RemoveCtxCtrInjectComments(lines);
+            if (result.Item2 > 0)
+            {
+                _updatingEditor = true;
+                try { SetTomlEditorText(string.Join("\n", result.Item1)); } finally { _updatingEditor = false; }
+                ThreadHelper.JoinableTaskFactory.RunAsync(async () => await Commands.WriteOutputAsync("[ReXGlue] [Strip ctx.ctr] Removed inject label comment(s) from " + result.Item2 + " line(s)."));
+            }
+            else
+                ThreadHelper.JoinableTaskFactory.RunAsync(async () => await Commands.WriteOutputAsync("[ReXGlue] [Strip ctx.ctr] No # ctx.ctr.u32[n] end-of-line comments found."));
         }
     }
 }

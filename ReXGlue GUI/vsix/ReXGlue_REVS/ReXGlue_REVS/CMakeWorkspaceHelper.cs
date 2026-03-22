@@ -33,6 +33,28 @@ namespace ReXGlue_REVS
             return count;
         }
 
+        /// <summary>
+        /// True if <paramref name="path"/> is the same directory as <paramref name="rootDirectory"/> or a subdirectory of it.
+        /// Used to tell whether the opened workspace (solution folder) already contains the ReXGlue TOML project folder.
+        /// </summary>
+        public static bool IsDescendantOrSameDirectory(string path, string rootDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(rootDirectory)) return false;
+            try
+            {
+                string fullPath = Path.GetFullPath(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                string fullRoot = Path.GetFullPath(rootDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                if (string.Equals(fullPath, fullRoot, StringComparison.OrdinalIgnoreCase)) return true;
+                if (!fullRoot.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+                    fullRoot += Path.DirectorySeparatorChar;
+                return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         /// <summary>Best-effort remove rexglue-style preset output folder after migrate.</summary>
         public static bool TryDeleteOutFolder(string projectRoot, out string errorMessage)
         {

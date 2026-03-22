@@ -69,6 +69,8 @@
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4" x:Name="panelToolbar">
                 <Button x:Name="buttonAddSetjmp" Content="+ setjmp/longjmp" Click="ButtonAddSetjmp_Click" Margin="0,0,4,0" Height="24" Background="#3F3F46" Foreground="#CCCCCC" BorderThickness="0" Cursor="Hand"/>
                 <Button x:Name="buttonRemoveDupes" Content="Remove Dupes" Click="ButtonRemoveDupes_Click" Margin="0,0,4,0" Height="24" Background="#3F3F46" Foreground="#CCCCCC" BorderThickness="0" Cursor="Hand"/>
+                <Button x:Name="buttonStripCtxCtr" Content="Strip ctx.ctr labels" Click="ButtonStripCtxCtr_Click" Margin="0,0,4,0" Height="24" Background="#3F3F46" Foreground="#CCCCCC" BorderThickness="0" Cursor="Hand"
+                        ToolTip="Remove trailing # ctx.ctr.u32[n] comments from all lines"/>
                 <Button x:Name="buttonClearValues" Content="Clear Values" Click="ButtonClearValues_Click" Margin="0,0,4,0" Height="24" Background="#3F3F46" Foreground="#CCCCCC" BorderThickness="0" Cursor="Hand"/>
                 <Button x:Name="buttonWriteFunctions" Content="Write [functions]" Click="ButtonWriteFunctions_Click" Margin="0,0,4,0" Height="24" Background="#3F3F46" Foreground="#CCCCCC" BorderThickness="0" Cursor="Hand"/>
                 <Button x:Name="buttonAddAddr" Content="Add addr = {}" Click="ButtonAddAddr_Click" Margin="0,0,4,0" Height="24" Background="#3F3F46" Foreground="#CCCCCC" BorderThickness="0" Cursor="Hand"/>
